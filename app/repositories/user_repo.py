@@ -24,16 +24,19 @@ class UserRepository(BaseRepository[User]):
         self,
         openid: str,
         nickname: str | None = None,
-        avatar_url: str | None = None
+        avatar_url: str | None = None,
+        grade: str = "G1"
     ) -> User:
         """Create user if not exists, otherwise update and return existing user"""
         user = await self.get_by_openid(openid)
+        default_nickname = "数学小达人"
         if user is None:
-            # 创建新用户
+            # 创建新用户，昵称默认为"数学小达人"
             user = await self.create({
                 "openid": openid,
-                "nickname": nickname,
+                "nickname": nickname or default_nickname,
                 "avatar_url": avatar_url,
+                "grade": grade,
                 "last_login_at": datetime.now(),
             })
         else:
@@ -46,4 +49,26 @@ class UserRepository(BaseRepository[User]):
             user.last_login_at = datetime.now()  # 更新最后登录时间
             await self.session.commit()
             await self.session.refresh(user)
+        return user
+
+    async def update(self, user_id: int, data: dict) -> User | None:
+        """Update user fields by user_id
+
+        Args:
+            user_id: The user's ID
+            data: Dictionary of fields to update (only non-None values with existing attributes are updated)
+
+        Returns:
+            Updated User object or None if user not found
+        """
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+
+        for key, value in data.items():
+            if value is not None and hasattr(user, key):
+                setattr(user, key, value)
+
+        await self.session.commit()
+        await self.session.refresh(user)
         return user

@@ -20,6 +20,7 @@ class User(BaseModel):
     streak_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_active_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 最后登录时间
+    grade: Mapped[str] = mapped_column(String(2), default="G1", nullable=False)  # 年级 G1-G6
 
     # Relationships
     progress = relationship("UserProgress", back_populates="user", lazy="selectin")

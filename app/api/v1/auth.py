@@ -25,7 +25,8 @@ async def wechat_login(request: WeChatLoginRequest, db: DBSession):
     user = await user_repo.create_or_get_by_openid(
         openid,
         nickname=request.nickname,
-        avatar_url=request.avatar_url
+        avatar_url=request.avatar_url,
+        grade=request.grade
     )
 
     # 生成 JWT token
@@ -36,7 +37,8 @@ async def wechat_login(request: WeChatLoginRequest, db: DBSession):
         user_id=user.id,
         openid=openid,
         nickname=user.nickname,
-        avatar_url=user.avatar_url
+        avatar_url=user.avatar_url,
+        grade=user.grade
     )
 
 

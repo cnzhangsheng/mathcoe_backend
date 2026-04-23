@@ -1,7 +1,7 @@
 """
 User API router - user profile and progress
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession, CurrentUser
 from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar, UserUpdate
@@ -34,6 +34,8 @@ async def get_ability_radar(db: DBSession, current_user: CurrentUser):
 @router.patch("/me", response_model=UserResponse)
 async def update_user(data: UserUpdate, db: DBSession, current_user: CurrentUser):
     """Update user profile"""
-    # TODO: 实现用户更新逻辑
     service = UserService(db)
-    return await service.get_user(current_user["id"])
+    result = await service.update_user(current_user["id"], data)
+    if result is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return result

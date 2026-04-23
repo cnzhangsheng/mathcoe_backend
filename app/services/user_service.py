@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.user_repo import UserRepository
 from app.repositories.practice_repo import UserProgressRepository, PracticeRecordRepository
-from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar
+from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar, UserUpdate
 
 
 class UserService:
@@ -48,3 +48,11 @@ class UserService:
         ]
         # TODO: 基于实际数据计算
         return UserAbilityRadar(abilities=abilities, overall_rank=82)
+
+    async def update_user(self, user_id: int, data: UserUpdate) -> UserResponse | None:
+        """Update user information"""
+        update_data = data.model_dump(exclude_unset=True)
+        user = await self.user_repo.update(user_id, update_data)
+        if user is None:
+            return None
+        return UserResponse.model_validate(user)

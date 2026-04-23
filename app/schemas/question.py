@@ -32,12 +32,13 @@ class QuestionBase(BaseModel):
     answer: str  # 单选: "A", 多选: "A,B"
     explanation: dict | None = None  # {text: str, images: []}
     difficulty: str | None = None
+    level: int  # 级别 1-6，必选
     source_year: int | None = None
     tags: list[str] | None = None
 
 
 class QuestionCreate(QuestionBase):
-    topic_id: int | None = None
+    topic_id: int  # 所属专题，必选
 
 
 class QuestionUpdate(BaseModel):
@@ -48,6 +49,7 @@ class QuestionUpdate(BaseModel):
     answer: str | None = None
     explanation: dict | None = None
     difficulty: str | None = None
+    level: int | None = None  # 级别 1-6
     source_year: int | None = None
     tags: list[str] | None = None
     topic_id: int | None = None
@@ -63,6 +65,7 @@ class QuestionResponse(BaseModel):
     answer: str
     explanation: dict | None
     difficulty: str | None
+    level: int | None  # 级别 1-6
     source_year: int | None
     tags: list[str] | None
     created_at: datetime | None
@@ -81,6 +84,7 @@ class QuestionForPractice(BaseModel):
     question_type: str
     options: list[dict] | None
     difficulty: str | None
+    level: int | None  # 级别 1-6
 
     class Config:
         from_attributes = True
