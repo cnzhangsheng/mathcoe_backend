@@ -187,7 +187,7 @@ COMMENT ON COLUMN wrong_questions.mastered IS '是否已掌握';
 
 -- 插入默认管理员（用户名：admin，密码：admin）
 INSERT INTO admins (id, username, password_hash, role) VALUES
-(1000, 'admin', '$2b$12$8.Ii.idX5R92IZqIPES6SeVu596EftSQu.ajclnXxsUO1YmDGNoT2', 'admin');
+(1000, 'admin', '$2b$12$noy82W8dKcuHz1LnufVCU.WEFMzGRyE43RrBGeUGirqpz8Y0iR2Q.', 'admin');
 
 -- 插入专题数据（使用手动指定的ID）
 INSERT INTO topics (id, title, description, difficulty, icon, color, is_high_freq) VALUES

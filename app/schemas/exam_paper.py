@@ -122,7 +122,6 @@ class ExamPaperTestResponse(BaseModel):
     correct_count: int | None = None
     total_questions: int
     time_spent: int | None = None
-    answers: dict | None = None
     started_at: datetime
     finished_at: datetime | None = None
     status: str
@@ -133,10 +132,48 @@ class ExamPaperTestResponse(BaseModel):
 
 class ExamPaperTestDetail(ExamPaperTestResponse):
     """测试记录详情"""
-    correct_answers: dict[int, str] | None = None  # 正确答案
+    correct_answers_summary: dict[int, str] | None = None  # 正确答案汇总（仅用于展示）
 
 
 class ExamPaperTestList(BaseModel):
     """测试记录列表"""
     total: int
     items: list[ExamPaperTestResponse]
+
+
+# ============ ExamPaperTestAnswer Schemas ============
+
+class ExamPaperTestAnswerResponse(BaseModel):
+    """答题记录响应"""
+    id: int
+    test_id: int
+    user_id: int
+    exam_paper_id: int
+    question_index: int
+    question_id: int
+    user_answer: str
+    correct_answer: str
+    is_correct: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WrongQuestionStats(BaseModel):
+    """错题统计"""
+    question_id: int
+    wrong_count: int  # 答错次数
+    correct_count: int  # 答对次数
+    total_count: int  # 总答题次数
+    wrong_rate: float  # 错误率（百分比）
+
+
+class UserWrongQuestion(BaseModel):
+    """用户错题详情"""
+    question_id: int
+    question_title: str | None = None
+    correct_answer: str
+    wrong_count: int  # 答错次数
+    last_wrong_at: datetime | None = None
+    question: QuestionBasic | None = None

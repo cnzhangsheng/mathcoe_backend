@@ -245,9 +245,9 @@ INSERT INTO alembic_version (version_num) VALUES ('004');
 -- 初始数据插入
 -- ============================================
 
--- 插入默认管理员（用户名：admin，密码：admin123）
+-- 插入默认管理员（用户名：admin，密码：admin）
 INSERT INTO admins (id, username, password_hash, role) VALUES
-(1000, 'admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.aOyBoMyi9.G9mK', 'admin');
+(1000, 'admin', '$2b$12$noy82W8dKcuHz1LnufVCU.WEFMzGRyE43RrBGeUGirqpz8Y0iR2Q.', 'admin');
 
 -- 插入专题数据
 INSERT INTO topics (id, title, description, difficulty, icon, color, is_high_freq) VALUES
