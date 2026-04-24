@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.topic import Topic
 from app.models.question import Question
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
+from app.models.exam_paper_test import ExamPaperTest
 from app.models.user_progress import UserProgress
 from app.models.practice_record import PracticeRecord
 from app.models.favorite import Favorite, WrongQuestion
@@ -20,6 +21,7 @@ __all__ = [
     "Question",
     "ExamPaper",
     "ExamPaperQuestion",
+    "ExamPaperTest",
     "UserProgress",
     "PracticeRecord",
     "Favorite",

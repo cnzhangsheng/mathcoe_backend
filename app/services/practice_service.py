@@ -40,14 +40,27 @@ class PracticeService:
         year: int | None = None,
     ) -> PracticeStartResponse:
         """Start a practice session"""
-        questions = await self.question_repo.get_all(limit=10)  # 简化逻辑
+        # 根据条件获取题目
+        if topic_id:
+            questions = await self.question_repo.get_by_topic(topic_id, limit=10)
+        elif difficulty:
+            questions = await self.question_repo.get_by_difficulty(difficulty, limit=10)
+        elif year:
+            questions = await self.question_repo.get_by_year(year, limit=10)
+        else:
+            questions = await self.question_repo.get_all(limit=10)
 
         question_list = [
             {
                 "id": q.id,
                 "title": q.title,
                 "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "explanation": q.explanation,
                 "difficulty": q.difficulty,
+                "level": q.level,
+                "question_type": q.question_type,
             }
             for q in questions
         ]

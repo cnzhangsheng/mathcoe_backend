@@ -8,11 +8,15 @@ from pydantic import BaseModel
 # ============ Question Basic Schema ============
 
 class QuestionBasic(BaseModel):
-    """题目基本信息"""
+    """题目基本信息（用于考卷详情）"""
     id: int
     title: str
     level: int | None = None
     question_type: str
+    options: list[dict] | None = None
+    content: dict | None = None
+    answer: str | None = None
+    explanation: dict | None = None
 
     class Config:
         from_attributes = True
@@ -87,3 +91,52 @@ class ExamPaperQuestionResponse(BaseModel):
 
 # 更新前向引用
 ExamPaperWithQuestions.model_rebuild()
+
+
+# ============ ExamPaperTest Schemas ============
+
+class ExamPaperTestStart(BaseModel):
+    """开始测试请求"""
+    exam_paper_id: int
+
+
+class ExamPaperTestAnswer(BaseModel):
+    """提交单题答案"""
+    question_index: int  # 题目序号（1-N）
+    user_answer: str  # 用户答案 A/B/C/D
+
+
+class ExamPaperTestSubmit(BaseModel):
+    """完成测试请求"""
+    answers: dict[int, str]  # 所有答案 {1: "A", 2: "B"}
+    time_spent: int  # 用时（秒）
+
+
+class ExamPaperTestResponse(BaseModel):
+    """测试记录响应"""
+    id: int
+    user_id: int
+    exam_paper_id: int
+    exam_paper_title: str | None = None
+    score: int | None = None
+    correct_count: int | None = None
+    total_questions: int
+    time_spent: int | None = None
+    answers: dict | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class ExamPaperTestDetail(ExamPaperTestResponse):
+    """测试记录详情"""
+    correct_answers: dict[int, str] | None = None  # 正确答案
+
+
+class ExamPaperTestList(BaseModel):
+    """测试记录列表"""
+    total: int
+    items: list[ExamPaperTestResponse]

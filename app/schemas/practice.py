@@ -28,7 +28,7 @@ class PracticeSubmitRequest(BaseModel):
 class PracticeSubmitResponse(BaseModel):
     is_correct: bool
     correct_answer: str
-    explanation: str | None
+    explanation: str | dict | None = None
 
 
 class PracticeRecordResponse(BaseModel):
