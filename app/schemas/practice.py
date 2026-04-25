@@ -68,3 +68,38 @@ class WrongQuestionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class WrongQuestionDetailResponse(BaseModel):
+    """错题详情响应 - 包含完整题目信息"""
+    id: int
+    question_id: int
+    question_title: str | None = None
+    question_content: dict | None = None
+    question_options: list[dict] | None = None
+    question_answer: str | None = None
+    question_explanation: dict | None = None
+    question_difficulty: str | None = None
+    user_answer: str | None = None  # 最近一次错误答案
+    retry_count: int
+    mastered: bool
+    created_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class FavoriteDetailResponse(BaseModel):
+    """收藏详情响应 - 包含完整题目信息"""
+    id: int
+    question_id: int
+    question_title: str | None = None
+    question_content: dict | None = None
+    question_options: list[dict] | None = None
+    question_answer: str | None = None
+    question_explanation: dict | None = None
+    question_difficulty: str | None = None
+    created_at: datetime | None
+
+    class Config:
+        from_attributes = True

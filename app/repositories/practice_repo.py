@@ -1,15 +1,19 @@
 """
 Practice repository - data access for PracticeRecord, UserProgress, Favorite, WrongQuestion
 """
+import logging
 from datetime import datetime
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.practice_record import PracticeRecord
 from app.models.user_progress import UserProgress
 from app.models.favorite import Favorite, WrongQuestion
 from app.repositories.base import BaseRepository
+
+logger = logging.getLogger(__name__)
 
 
 class PracticeRecordRepository(BaseRepository[PracticeRecord]):
@@ -83,6 +87,16 @@ class FavoriteRepository(BaseRepository[Favorite]):
         )
         return list(result.scalars().all())
 
+    async def get_by_user_with_question(self, user_id: int) -> list[Favorite]:
+        """Get user favorites with question loaded"""
+        result = await self.session.execute(
+            select(Favorite)
+            .options(selectinload(Favorite.question))
+            .where(Favorite.user_id == user_id)
+            .order_by(Favorite.created_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def is_favorited(self, user_id: int, question_id: int) -> bool:
         """Check if question is favorited by user"""
         result = await self.session.execute(
@@ -122,8 +136,20 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
         )
         return list(result.scalars().all())
 
+    async def get_by_user_with_question(self, user_id: int, mastered: bool = False) -> list[WrongQuestion]:
+        """Get user wrong questions with question loaded"""
+        result = await self.session.execute(
+            select(WrongQuestion)
+            .options(selectinload(WrongQuestion.question))
+            .where(WrongQuestion.user_id == user_id)
+            .where(WrongQuestion.mastered == mastered)
+            .order_by(WrongQuestion.created_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestion:
         """Add or update wrong question"""
+        logger.info(f"添加错题: user_id={user_id}, question_id={question_id}")
         result = await self.session.execute(
             select(WrongQuestion)
             .where(WrongQuestion.user_id == user_id)
@@ -131,6 +157,7 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
         )
         wrong = result.scalar_one_or_none()
         if wrong is None:
+            logger.info(f"创建新错题记录: user_id={user_id}, question_id={question_id}")
             wrong = await self.create({
                 "user_id": user_id,
                 "question_id": question_id,
@@ -140,4 +167,39 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
             wrong.last_retry_at = datetime.utcnow()
             await self.session.commit()
             await self.session.refresh(wrong)
+            logger.info(f"更新错题记录: user_id={user_id}, question_id={question_id}, retry_count={wrong.retry_count}")
         return wrong
+
+    async def mark_mastered(self, user_id: int, question_id: int) -> bool:
+        """Mark wrong question as mastered"""
+        logger.info(f"标记掌握: user_id={user_id}, question_id={question_id}")
+        result = await self.session.execute(
+            select(WrongQuestion)
+            .where(WrongQuestion.user_id == user_id)
+            .where(WrongQuestion.question_id == question_id)
+        )
+        wrong = result.scalar_one_or_none()
+        if wrong is None:
+            logger.warning(f"错题不存在: user_id={user_id}, question_id={question_id}")
+            return False
+        wrong.mastered = True
+        await self.session.commit()
+        logger.info(f"标记掌握成功: user_id={user_id}, question_id={question_id}")
+        return True
+
+    async def remove_wrong(self, user_id: int, question_id: int) -> bool:
+        """Remove wrong question record"""
+        logger.info(f"删除错题记录: user_id={user_id}, question_id={question_id}")
+        result = await self.session.execute(
+            select(WrongQuestion)
+            .where(WrongQuestion.user_id == user_id)
+            .where(WrongQuestion.question_id == question_id)
+        )
+        wrong = result.scalar_one_or_none()
+        if wrong is None:
+            logger.warning(f"错题不存在: user_id={user_id}, question_id={question_id}")
+            return False
+        await self.session.delete(wrong)
+        await self.session.commit()
+        logger.info(f"删除错题成功: user_id={user_id}, question_id={question_id}")
+        return True

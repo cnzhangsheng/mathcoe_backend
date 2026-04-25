@@ -132,7 +132,39 @@ class ExamPaperTestResponse(BaseModel):
 
 class ExamPaperTestDetail(ExamPaperTestResponse):
     """测试记录详情"""
-    correct_answers_summary: dict[int, str] | None = None  # 正确答案汇总（仅用于展示）
+    correct_answers_summary: dict[int, str] | None = None
+
+
+class AnswerSheetItem(BaseModel):
+    """答题卡单项"""
+    index: int
+    question_id: int
+    user_answer: str
+    correct_answer: str
+    is_correct: bool
+    # 题目详情（可选）
+    question_title: str | None = None
+    question_content: dict | None = None
+    question_options: list[dict] | None = None
+    question_explanation: dict | None = None
+
+
+class ExamPaperTestReport(BaseModel):
+    """测试报告详情（包含完整答题卡）"""
+    id: int
+    user_id: int
+    exam_paper_id: int
+    exam_paper_title: str | None = None
+    score: int
+    correct_count: int
+    wrong_count: int
+    total_questions: int
+    time_spent: int
+    started_at: datetime
+    finished_at: datetime | None = None
+    status: str
+    # 答题卡数据
+    answer_sheet: list[AnswerSheetItem] = []
 
 
 class ExamPaperTestList(BaseModel):

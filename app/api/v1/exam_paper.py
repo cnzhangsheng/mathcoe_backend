@@ -1,9 +1,10 @@
 """
 ExamPaper API for miniapp - 用户端考卷接口
 """
+import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, insert
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DBSession, CurrentUser
@@ -11,13 +12,16 @@ from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.exam_paper_test import ExamPaperTest
 from app.models.exam_paper_test_answer import TestAnswerRecord
 from app.models.question import Question
+from app.models.favorite import WrongQuestion
 from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperWithQuestions,
     ExamPaperTestStart, ExamPaperTestAnswer, ExamPaperTestSubmit,
     ExamPaperTestResponse, ExamPaperTestDetail, ExamPaperTestList,
-    ExamPaperTestAnswerResponse, UserWrongQuestion
+    ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport
 )
+from app.utils.id_generator import short_id
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -63,6 +67,80 @@ async def get_user_tests(db: DBSession, user: CurrentUser, limit: int = 20, offs
         ))
 
     return ExamPaperTestList(total=total, items=items)
+
+
+@router.get("/tests/{test_id}/report", response_model=ExamPaperTestReport)
+async def get_test_report(test_id: int, db: DBSession, user: CurrentUser):
+    """获取测试报告（包含完整答题卡和题目详情）"""
+    # 验证测试记录
+    result = await db.execute(
+        select(ExamPaperTest).where(ExamPaperTest.id == test_id, ExamPaperTest.user_id == user["id"])
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="测试记录不存在")
+
+    # 获取考卷标题
+    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == test.exam_paper_id))
+    paper = paper_result.scalar_one_or_none()
+
+    # 获取答题记录
+    answers_result = await db.execute(
+        select(TestAnswerRecord)
+        .options(selectinload(TestAnswerRecord.question))
+        .where(TestAnswerRecord.test_id == test_id)
+        .order_by(TestAnswerRecord.question_index)
+    )
+    answer_records = list(answers_result.scalars().all())
+
+    # 构建答题卡数据
+    answer_sheet = []
+    for r in answer_records:
+        question = r.question
+        # 处理题目内容
+        question_content = None
+        question_options = None
+        question_explanation = None
+        question_title = None
+
+        if question:
+            question_title = question.title
+            if question.content:
+                question_content = question.content if isinstance(question.content, dict) else {"text": question.content}
+            if question.options:
+                question_options = question.options if isinstance(question.options, list) else []
+            if question.explanation:
+                question_explanation = question.explanation if isinstance(question.explanation, dict) else {"text": question.explanation}
+
+        answer_sheet.append({
+            "index": r.question_index,
+            "question_id": r.question_id,
+            "user_answer": r.user_answer,
+            "correct_answer": r.correct_answer,
+            "is_correct": r.is_correct,
+            "question_title": question_title,
+            "question_content": question_content,
+            "question_options": question_options,
+            "question_explanation": question_explanation
+        })
+
+    wrong_count = test.total_questions - (test.correct_count or 0)
+
+    return ExamPaperTestReport(
+        id=test.id,
+        user_id=test.user_id,
+        exam_paper_id=test.exam_paper_id,
+        exam_paper_title=paper.title if paper else None,
+        score=test.score or 0,
+        correct_count=test.correct_count or 0,
+        wrong_count=wrong_count,
+        total_questions=test.total_questions,
+        time_spent=test.time_spent or 0,
+        started_at=test.started_at,
+        finished_at=test.finished_at,
+        status=test.status,
+        answer_sheet=answer_sheet
+    )
 
 
 @router.get("/tests/{test_id}", response_model=ExamPaperTestDetail)
@@ -132,6 +210,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     correct_count = 0
     correct_answers_summary = {}
     answer_records = []
+    wrong_question_ids = []  # 收集错题ID
 
     for i, q in enumerate(questions, 1):
         question_id = q.question_id
@@ -140,9 +219,13 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
 
         correct_answers_summary[i] = correct_answer
 
-        is_correct = user_answer and user_answer.upper() == correct_answer.upper()
+        # 未选择答案视为错误
+        is_correct = bool(user_answer and user_answer.upper() == correct_answer.upper())
         if is_correct:
             correct_count += 1
+        else:
+            # 收集错题ID
+            wrong_question_ids.append(question_id)
 
         answer_record = TestAnswerRecord(
             test_id=test.id,
@@ -166,6 +249,29 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     test.status = "completed"
 
     db.add_all(answer_records)
+    await db.commit()
+
+    # 将错题加入错题本
+    for question_id in wrong_question_ids:
+        # 检查是否已存在
+        existing = await db.execute(
+            select(WrongQuestion)
+            .where(WrongQuestion.user_id == user["id"])
+            .where(WrongQuestion.question_id == question_id)
+        )
+        wrong_record = existing.scalar_one_or_none()
+        if wrong_record:
+            # 更新重试次数
+            wrong_record.retry_count += 1
+            wrong_record.last_retry_at = datetime.utcnow()
+        else:
+            # 创建新记录
+            wrong_record = WrongQuestion(
+                id=short_id(),
+                user_id=user["id"],
+                question_id=question_id
+            )
+            db.add(wrong_record)
     await db.commit()
 
     # 获取考卷标题
@@ -274,13 +380,16 @@ async def start_exam_paper_test(exam_paper_id: int, db: DBSession, user: Current
     )
 
 
-@router.post("/{exam_paper_id}/submit", response_model=ExamPaperTestDetail)
+@router.post("/{exam_paper_id}/submit", response_model=ExamPaperTestReport)
 async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubmit, db: DBSession, user: CurrentUser):
     """直接提交考卷测试（无需预创建，一次性创建并完成）"""
+    logger.info(f"提交考卷请求: user_id={user['id']}, exam_paper_id={exam_paper_id}, answers={submit.answers}, time_spent={submit.time_spent}")
+
     # 检查考卷是否存在
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
     exam_paper = result.scalar_one_or_none()
     if not exam_paper:
+        logger.warning(f"考卷不存在: exam_paper_id={exam_paper_id}")
         raise HTTPException(status_code=404, detail="考卷不存在")
 
     # 检查是否已有记录，如果有则删除旧记录（保证user_id+exam_paper_id唯一）
@@ -292,6 +401,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
     )
     existing = existing_test.scalar_one_or_none()
     if existing:
+        logger.info(f"删除旧测试记录: test_id={existing.id}")
         # 先删除关联的答题记录
         await db.execute(
             delete(TestAnswerRecord).where(TestAnswerRecord.test_id == existing.id)
@@ -317,20 +427,49 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
 
     # 计算得分并创建答题记录
     correct_count = 0
-    correct_answers_summary = {}
     answer_records = []
+    answer_sheet_data = []  # 用于返回答题卡数据
+    wrong_question_ids = []  # 收集错题ID
 
     for i, q in enumerate(questions, 1):
         question_id = q.question_id
-        correct_answer = q.question.answer
+        question = q.question
+        correct_answer = question.answer
         user_answer = submit.answers.get(i)
 
-        correct_answers_summary[i] = correct_answer
-
-        is_correct = user_answer and user_answer.upper() == correct_answer.upper()
+        # 未选择答案视为错误
+        is_correct = bool(user_answer and user_answer.upper() == correct_answer.upper())
         if is_correct:
             correct_count += 1
+        else:
+            # 收集错题ID
+            wrong_question_ids.append(question_id)
 
+        # 处理题目内容
+        question_content = None
+        question_options = None
+        question_explanation = None
+        if question.content:
+            question_content = question.content if isinstance(question.content, dict) else {"text": question.content}
+        if question.options:
+            question_options = question.options if isinstance(question.options, list) else []
+        if question.explanation:
+            question_explanation = question.explanation if isinstance(question.explanation, dict) else {"text": question.explanation}
+
+        # 答题卡数据
+        answer_sheet_data.append({
+            "index": i,
+            "question_id": question_id,
+            "user_answer": user_answer or "",
+            "correct_answer": correct_answer,
+            "is_correct": is_correct,
+            "question_title": question.title,
+            "question_content": question_content,
+            "question_options": question_options,
+            "question_explanation": question_explanation
+        })
+
+        # 答题记录
         answer_record = TestAnswerRecord(
             test_id=0,  # 临时值，flush后会更新
             user_id=user["id"],
@@ -344,6 +483,8 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
         answer_records.append(answer_record)
 
     score = int((correct_count / len(questions)) * 100) if questions else 0
+    wrong_count = len(questions) - correct_count
+    logger.info(f"计算得分: correct_count={correct_count}, wrong_count={wrong_count}, score={score}, wrong_question_ids={wrong_question_ids}")
 
     # 创建测试记录
     now = datetime.utcnow()
@@ -360,6 +501,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
     )
     db.add(test)
     await db.flush()  # 获取 test.id
+    logger.info(f"创建测试记录: test_id={test.id}")
 
     # 更新答题记录的 test_id
     for record in answer_records:
@@ -367,24 +509,49 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
 
     db.add_all(answer_records)
     await db.commit()
+    logger.info(f"保存答题记录: {len(answer_records)}条")
 
-    # 获取考卷标题（commit后重新查询）
-    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
-    paper = paper_result.scalar_one_or_none()
+    # 将错题加入错题本
+    for question_id in wrong_question_ids:
+        # 检查是否已存在
+        existing_wrong = await db.execute(
+            select(WrongQuestion)
+            .where(WrongQuestion.user_id == user["id"])
+            .where(WrongQuestion.question_id == question_id)
+        )
+        wrong_record = existing_wrong.scalar_one_or_none()
+        if wrong_record:
+            # 更新重试次数
+            wrong_record.retry_count += 1
+            wrong_record.last_retry_at = datetime.utcnow()
+            logger.info(f"更新错题记录: question_id={question_id}, retry_count={wrong_record.retry_count}")
+        else:
+            # 创建新记录
+            wrong_record = WrongQuestion(
+                id=short_id(),
+                user_id=user["id"],
+                question_id=question_id
+            )
+            db.add(wrong_record)
+            logger.info(f"创建错题记录: question_id={question_id}")
+    await db.commit()
 
-    return ExamPaperTestDetail(
+    logger.info(f"提交考卷完成: test_id={test.id}, score={score}")
+
+    return ExamPaperTestReport(
         id=test.id,
         user_id=test.user_id,
         exam_paper_id=test.exam_paper_id,
-        exam_paper_title=paper.title if paper else None,
+        exam_paper_title=exam_paper.title,
         score=score,
         correct_count=correct_count,
+        wrong_count=wrong_count,
         total_questions=len(questions),
         time_spent=submit.time_spent,
         started_at=now,
         finished_at=now,
         status="completed",
-        correct_answers_summary=correct_answers_summary
+        answer_sheet=answer_sheet_data
     )
 
 

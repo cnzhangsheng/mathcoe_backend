@@ -1,6 +1,7 @@
 """
 Auth API router - WeChat login
 """
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from app.schemas.auth import WeChatLoginRequest, WeChatLoginResponse, TokenRespo
 from app.services.auth_service import AuthService
 from app.repositories.user_repo import UserRepository
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 auth_service = AuthService()
 
@@ -16,9 +18,12 @@ auth_service = AuthService()
 @router.post("/wx-login", response_model=WeChatLoginResponse)
 async def wechat_login(request: WeChatLoginRequest, db: DBSession):
     """WeChat mini program login"""
+    logger.info(f"微信登录请求: code={request.code}, nickname={request.nickname}, grade={request.grade}")
+
     # 获取 openid
     wx_data = await auth_service.get_wechat_openid(request.code)
     openid = wx_data["openid"]
+    logger.info(f"获取openid成功: openid={openid}")
 
     # 创建或获取用户，并更新用户信息
     user_repo = UserRepository(db)
@@ -28,6 +33,7 @@ async def wechat_login(request: WeChatLoginRequest, db: DBSession):
         avatar_url=request.avatar_url,
         grade=request.grade
     )
+    logger.info(f"用户登录成功: user_id={user.id}, openid={openid}")
 
     # 生成 JWT token
     token = auth_service.create_token(user.id, openid)
