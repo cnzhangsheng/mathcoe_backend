@@ -81,10 +81,27 @@ class QuestionForPractice(BaseModel):
     topic_id: int | None
     title: str
     content: dict | None
-    question_type: str
+    question_type: str = "single"  # 默认单选题
     options: list[dict] | None
     difficulty: str | None
-    level: int | None  # 级别 1-6
+    level: int | None = 1  # 默认级别
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionForDiscover(BaseModel):
+    """探索页面题目（含答案和解析）"""
+    id: int
+    topic_id: int | None
+    title: str
+    content: dict | None
+    question_type: str = "single"
+    options: list[dict] | None
+    answer: str
+    explanation: dict | None
+    difficulty: str | None
+    level: int | None = 1
 
     class Config:
         from_attributes = True

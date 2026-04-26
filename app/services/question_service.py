@@ -1,11 +1,12 @@
 """
 Question service - question related business logic
 """
+import random
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.question_repo import QuestionRepository
 from app.repositories.topic_repo import TopicRepository
-from app.schemas.question import QuestionResponse, QuestionForPractice
+from app.schemas.question import QuestionResponse, QuestionForPractice, QuestionForDiscover
 
 
 class QuestionService:
@@ -50,3 +51,24 @@ class QuestionService:
         if question is None:
             return None
         return QuestionResponse.model_validate(question)
+
+    async def get_random_question(self) -> QuestionForDiscover | None:
+        """Get a random question for discover page"""
+        questions = await self.question_repo.get_all(limit=100)
+        if not questions:
+            return None
+
+        question = random.choice(questions)
+
+        return QuestionForDiscover(
+            id=question.id,
+            topic_id=question.topic_id,
+            title=question.title,
+            content=question.content,
+            question_type=question.question_type or "single",
+            options=question.options,
+            answer=question.answer,
+            explanation=question.explanation,
+            difficulty=question.difficulty,
+            level=question.level,
+        )
