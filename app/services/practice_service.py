@@ -189,6 +189,8 @@ class PracticeService:
                 id=w.id,
                 question_id=w.question_id,
                 question_title=w.question.title if w.question else None,
+                question_topic_id=w.question.topic_id if w.question else None,
+                question_topic_title=w.question.topic.title if w.question and w.question.topic else None,
                 question_content=w.question.content if w.question else None,
                 question_options=w.question.options if w.question else None,
                 question_answer=w.question.answer if w.question else None,
@@ -200,6 +202,19 @@ class PracticeService:
                 created_at=w.created_at,
             ))
         return result
+
+    async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestionResponse:
+        """Add question to wrong questions list"""
+        logger.info(f"添加错题: user_id={user_id}, question_id={question_id}")
+        wrong_question = await self.wrong_repo.add_wrong_question(user_id, question_id)
+        logger.info(f"错题添加成功: wrong_question_id={wrong_question.id}")
+        return WrongQuestionResponse(
+            id=wrong_question.id,
+            question_id=wrong_question.question_id,
+            retry_count=wrong_question.retry_count,
+            mastered=wrong_question.mastered,
+            created_at=wrong_question.created_at,
+        )
 
     async def _get_last_wrong_answer(self, session: AsyncSession, user_id: int, question_id: int) -> str | None:
         """Get user's last wrong answer for a question"""

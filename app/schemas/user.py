@@ -29,6 +29,7 @@ class UserUpdate(BaseModel):
     streak_days: int | None = None
     last_active_date: date | None = None
     grade: str | None = None
+    daily_goal: int | None = None
 
     @field_validator('grade')
     @classmethod
@@ -38,6 +39,16 @@ class UserUpdate(BaseModel):
         valid_grades = {'G1', 'G2', 'G3', 'G4', 'G5', 'G6'}
         if v not in valid_grades:
             raise ValueError(f'grade must be one of {valid_grades}')
+        return v
+
+    @field_validator('daily_goal')
+    @classmethod
+    def validate_daily_goal(cls, v: int | None) -> int | None:
+        if v is None:
+            return v
+        valid_goals = {5, 10, 15, 20}
+        if v not in valid_goals:
+            raise ValueError(f'daily_goal must be one of {valid_goals}')
         return v
 
 
@@ -52,6 +63,7 @@ class UserResponse(BaseModel):
     created_at: datetime | None
     updated_at: datetime | None
     grade: str
+    daily_goal: int
 
     class Config:
         from_attributes = True
@@ -71,3 +83,15 @@ class UserProgressResponse(BaseModel):
 class UserAbilityRadar(BaseModel):
     abilities: list[dict[str, int | str]]
     overall_rank: int | None = None
+
+
+class UserStatsResponse(BaseModel):
+    """User learning statistics (weekly)"""
+    week_start: str
+    week_end: str
+    total_questions: int
+    correct_count: int
+    wrong_count: int
+    correct_rate: int
+    total_wrong_count: int
+    favorite_count: int

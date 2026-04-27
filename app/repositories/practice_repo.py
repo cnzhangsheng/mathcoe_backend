@@ -11,7 +11,9 @@ from sqlalchemy.orm import selectinload
 from app.models.practice_record import PracticeRecord
 from app.models.user_progress import UserProgress
 from app.models.favorite import Favorite, WrongQuestion
+from app.models.question import Question
 from app.repositories.base import BaseRepository
+from app.utils import short_id
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
         return list(result.scalars().all())
 
     async def get_user_stats(self, user_id: int) -> dict:
-        """Get user practice statistics"""
+        """Get user practice statistics (all time)"""
         total_result = await self.session.execute(
             select(func.count(PracticeRecord.id)).where(PracticeRecord.user_id == user_id)
         )
@@ -47,6 +49,53 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
         return {
             "total": total,
             "correct": correct,
+            "success_rate": round(correct / total * 100) if total > 0 else 0,
+        }
+
+    async def get_user_stats_by_week(self, user_id: int, week_start: datetime, week_end: datetime) -> dict:
+        """Get user practice statistics for a specific week"""
+        from sqlalchemy import and_
+
+        # 本周答题总数
+        total_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= week_start,
+                PracticeRecord.created_at < week_end
+            ))
+        )
+
+        # 本周正确数量
+        correct_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= week_start,
+                PracticeRecord.created_at < week_end,
+                PracticeRecord.is_correct == True
+            ))
+        )
+
+        # 本周错题数量
+        wrong_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= week_start,
+                PracticeRecord.created_at < week_end,
+                PracticeRecord.is_correct == False
+            ))
+        )
+
+        total = total_result.scalar() or 0
+        correct = correct_result.scalar() or 0
+        wrong = wrong_result.scalar() or 0
+
+        return {
+            "total": total,
+            "correct": correct,
+            "wrong": wrong,
             "success_rate": round(correct / total * 100) if total > 0 else 0,
         }
 
@@ -69,9 +118,30 @@ class UserProgressRepository(BaseRepository[UserProgress]):
     async def get_all_by_user(self, user_id: int) -> list[UserProgress]:
         """Get all progress for a user"""
         result = await self.session.execute(
-            select(UserProgress).where(UserProgress.user_id == user_id)
+            select(UserProgress)
+            .options(selectinload(UserProgress.topic))
+            .where(UserProgress.user_id == user_id)
         )
         return list(result.scalars().all())
+
+    async def get_all_by_user_with_topic(self, user_id: int) -> list[dict]:
+        """Get all progress for a user with topic info"""
+        result = await self.session.execute(
+            select(UserProgress)
+            .options(selectinload(UserProgress.topic))
+            .where(UserProgress.user_id == user_id)
+        )
+        progress_list = result.scalars().all()
+        return [
+            {
+                "topic_id": p.topic_id,
+                "topic_title": p.topic.title if p.topic else None,
+                "progress": p.progress,
+                "success_rate": p.success_rate,
+                "questions_done": p.questions_done,
+            }
+            for p in progress_list
+        ]
 
 
 class FavoriteRepository(BaseRepository[Favorite]):
@@ -140,7 +210,10 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
         """Get user wrong questions with question loaded"""
         result = await self.session.execute(
             select(WrongQuestion)
-            .options(selectinload(WrongQuestion.question))
+            .options(
+                selectinload(WrongQuestion.question),
+                selectinload(WrongQuestion.question).selectinload(Question.topic)
+            )
             .where(WrongQuestion.user_id == user_id)
             .where(WrongQuestion.mastered == mastered)
             .order_by(WrongQuestion.created_at.desc())
@@ -159,6 +232,7 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
         if wrong is None:
             logger.info(f"创建新错题记录: user_id={user_id}, question_id={question_id}")
             wrong = await self.create({
+                "id": short_id(),
                 "user_id": user_id,
                 "question_id": question_id,
             })

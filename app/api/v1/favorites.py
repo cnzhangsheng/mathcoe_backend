@@ -52,6 +52,16 @@ async def get_wrong_questions(db: DBSession, current_user: CurrentUser):
     return wrong_questions
 
 
+@router.post("/wrong", response_model=WrongQuestionResponse)
+async def add_wrong_question(request: FavoriteRequest, db: DBSession, current_user: CurrentUser):
+    """Add question to wrong questions list"""
+    logger.info(f"添加错题: user_id={current_user['id']}, question_id={request.question_id}")
+    service = PracticeService(db)
+    wrong_question = await service.add_wrong_question(current_user["id"], request.question_id)
+    logger.info(f"错题添加成功: wrong_question_id={wrong_question.id}")
+    return wrong_question
+
+
 @router.put("/wrong/{question_id}/master")
 async def mark_wrong_mastered(question_id: int, db: DBSession, current_user: CurrentUser):
     """Mark a wrong question as mastered"""

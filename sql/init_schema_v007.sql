@@ -1,7 +1,7 @@
 -- ============================================================
 -- Kangaroo Math Brain - 完整数据库初始化脚本
 -- PostgreSQL 数据库表结构 + 初始数据
--- 版本: 005 (整合所有迁移)
+-- 版本: 007 (添加daily_goal字段)
 -- 使用分布式短ID（11-12位纯数字），不使用自增
 -- 无触发器、无外键约束，应用层维护数据一致性
 -- 执行前请先创建数据库: CREATE DATABASE kangaroo_math;
@@ -35,6 +35,7 @@ CREATE TABLE users (
     nickname VARCHAR(64),
     avatar_url VARCHAR(256),
     grade VARCHAR(2) NOT NULL DEFAULT 'G1',             -- 年级 G1-G6
+    daily_goal INTEGER NOT NULL DEFAULT 10,             -- 每日目标题数
     streak_days INTEGER NOT NULL DEFAULT 0,
     last_active_date DATE,
     last_login_at TIMESTAMP,                            -- 最后登录时间
@@ -48,6 +49,7 @@ CREATE INDEX ix_users_grade ON users(grade);
 
 COMMENT ON TABLE users IS '微信小程序用户表';
 COMMENT ON COLUMN users.openid IS '微信用户唯一标识';
+COMMENT ON COLUMN users.daily_goal IS '每日目标题数，可选值: 5, 10, 15, 20';
 COMMENT ON COLUMN users.grade IS '年级：G1-G6（一年级到六年级）';
 COMMENT ON COLUMN users.streak_days IS '连续打卡天数';
 COMMENT ON COLUMN users.last_active_date IS '最后活跃日期';
@@ -165,7 +167,6 @@ CREATE TABLE exam_paper_tests (
     correct_count INTEGER,                              -- 正确数量
     total_questions INTEGER NOT NULL,                   -- 总题数
     time_spent INTEGER,                                 -- 用时（秒）
-    answers JSONB,                                      -- 每题答案 {"1": "A", "2": "B", ...}
     started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP,
     status VARCHAR(16) NOT NULL DEFAULT 'in_progress',  -- in_progress/completed
@@ -177,18 +178,49 @@ CREATE INDEX ix_exam_paper_tests_id ON exam_paper_tests(id);
 CREATE INDEX ix_exam_paper_tests_user_id ON exam_paper_tests(user_id);
 CREATE INDEX ix_exam_paper_tests_exam_paper_id ON exam_paper_tests(exam_paper_id);
 CREATE INDEX ix_exam_paper_tests_status ON exam_paper_tests(status);
-CREATE UNIQUE INDEX uq_user_exam_paper_in_progress ON exam_paper_tests(user_id, exam_paper_id) WHERE status = 'in_progress';
 
 COMMENT ON TABLE exam_paper_tests IS '考卷测试记录表';
 COMMENT ON COLUMN exam_paper_tests.user_id IS '关联用户ID（应用层维护）';
 COMMENT ON COLUMN exam_paper_tests.exam_paper_id IS '关联考卷ID（应用层维护）';
 COMMENT ON COLUMN exam_paper_tests.score IS '得分（满分100分）';
 COMMENT ON COLUMN exam_paper_tests.correct_count IS '正确答题数量';
-COMMENT ON COLUMN exam_paper_tests.answers IS '每题答案JSON，如 {"1": "A", "2": "B"}';
 COMMENT ON COLUMN exam_paper_tests.status IS '状态：in_progress进行中, completed已完成';
 
 -- ============================================
--- 7. 用户进度表 (user_progress)
+-- 7. 考卷答题记录表 (exam_paper_test_answers)
+-- ============================================
+CREATE TABLE exam_paper_test_answers (
+    id BIGINT PRIMARY KEY,
+    test_id BIGINT NOT NULL,                            -- 关联测试记录ID（无外键）
+    user_id BIGINT NOT NULL,                            -- 关联用户ID（无外键）
+    exam_paper_id BIGINT NOT NULL,                      -- 关联考卷ID（无外键）
+    question_index INTEGER NOT NULL,                    -- 题目序号（1-10）
+    question_id BIGINT NOT NULL,                        -- 关联题目ID（无外键）
+    user_answer VARCHAR(4) NOT NULL,                    -- 用户答案
+    correct_answer VARCHAR(4) NOT NULL,                 -- 正确答案
+    is_correct BOOLEAN NOT NULL,                        -- 是否正确
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ix_exam_paper_test_answers_id ON exam_paper_test_answers(id);
+CREATE INDEX ix_exam_paper_test_answers_test_id ON exam_paper_test_answers(test_id);
+CREATE INDEX ix_exam_paper_test_answers_user_id ON exam_paper_test_answers(user_id);
+CREATE INDEX ix_exam_paper_test_answers_exam_paper_id ON exam_paper_test_answers(exam_paper_id);
+CREATE INDEX ix_exam_paper_test_answers_question_id ON exam_paper_test_answers(question_id);
+
+COMMENT ON TABLE exam_paper_test_answers IS '考卷答题记录表（每题一条）';
+COMMENT ON COLUMN exam_paper_test_answers.test_id IS '关联测试记录ID（应用层维护）';
+COMMENT ON COLUMN exam_paper_test_answers.user_id IS '关联用户ID（应用层维护）';
+COMMENT ON COLUMN exam_paper_test_answers.exam_paper_id IS '关联考卷ID（应用层维护）';
+COMMENT ON COLUMN exam_paper_test_answers.question_index IS '题目序号（1-10）';
+COMMENT ON COLUMN exam_paper_test_answers.question_id IS '关联题目ID（应用层维护）';
+COMMENT ON COLUMN exam_paper_test_answers.user_answer IS '用户答案（如A、B）';
+COMMENT ON COLUMN exam_paper_test_answers.correct_answer IS '正确答案';
+COMMENT ON COLUMN exam_paper_test_answers.is_correct IS '是否正确';
+
+-- ============================================
+-- 8. 用户进度表 (user_progress)
 -- ============================================
 CREATE TABLE user_progress (
     id BIGINT PRIMARY KEY,
@@ -214,7 +246,7 @@ COMMENT ON COLUMN user_progress.success_rate IS '准确率百分比（0-100）';
 COMMENT ON COLUMN user_progress.questions_done IS '已练习题目数量';
 
 -- ============================================
--- 8. 答题记录表 (practice_records)
+-- 9. 答题记录表 (practice_records)
 -- ============================================
 CREATE TABLE practice_records (
     id BIGINT PRIMARY KEY,
@@ -243,7 +275,7 @@ COMMENT ON COLUMN practice_records.is_flagged IS '是否标记待复查';
 COMMENT ON COLUMN practice_records.is_bookmarked IS '是否收藏';
 
 -- ============================================
--- 9. 收藏表 (favorites)
+-- 10. 收藏表 (favorites)
 -- ============================================
 CREATE TABLE favorites (
     id BIGINT PRIMARY KEY,
@@ -262,7 +294,7 @@ COMMENT ON COLUMN favorites.user_id IS '关联用户ID（应用层维护）';
 COMMENT ON COLUMN favorites.question_id IS '关联题目ID（应用层维护）';
 
 -- ============================================
--- 10. 错题表 (wrong_questions)
+-- 11. 错题表 (wrong_questions)
 -- ============================================
 CREATE TABLE wrong_questions (
     id BIGINT PRIMARY KEY,
@@ -287,13 +319,13 @@ COMMENT ON COLUMN wrong_questions.retry_count IS '重试次数';
 COMMENT ON COLUMN wrong_questions.mastered IS '是否已掌握（做对3次后标记）';
 
 -- ============================================
--- 11. Alembic 版本控制表
+-- 12. Alembic 版本控制表
 -- ============================================
 CREATE TABLE alembic_version (
     version_num VARCHAR(32) NOT NULL PRIMARY KEY
 );
 
-INSERT INTO alembic_version (version_num) VALUES ('005');
+INSERT INTO alembic_version (version_num) VALUES ('006');
 
 
 -- ============================================================
@@ -311,11 +343,11 @@ INSERT INTO admins (id, username, password_hash, role) VALUES
 -- 专题初始数据
 -- ============================================
 INSERT INTO topics (id, title, description, difficulty, icon, color, is_high_freq) VALUES
-(1001, '算术与计数', '掌握快速心算、单位换算以及基本的排列组合。', 'L1-L2', 'Calculator', 'blue', TRUE),
-(1002, '逻辑与推理', '袋鼠数学的核心，包含间接推理、真假判断等。', 'L2-L3', 'Brain', 'purple', TRUE),
+(1001, '计算与代数', '掌握快速心算、单位换算以及基本的排列组合。', 'L1-L2', 'Calculator', 'blue', TRUE),
+(1002, '逻辑与观察', '袋鼠数学的核心，包含间接推理、真假判断等。', 'L2-L3', 'Brain', 'purple', TRUE),
 (1003, '几何与空间', '图形拆解、旋转观察及周长面积的趣味应用。', 'L1-L3', 'Columns', 'emerald', FALSE),
-(1004, '规律与观察', '发现视觉序列中的隐藏模式，锻炼敏锐洞察力。', 'L1-L2', 'Eye', 'amber', FALSE),
-(1005, '综合应用题', '将数学引入生活场景，考察阅读理解与模型构建。', 'L3-L4', 'ShoppingBag', 'rose', TRUE);
+(1004, '数论与规律', '发现视觉序列中的隐藏模式，锻炼敏锐洞察力。', 'L1-L2', 'Eye', 'amber', FALSE),
+(1005, '应用与组合', '将数学引入生活场景，考察阅读理解与模型构建。', 'L3-L4', 'ShoppingBag', 'rose', TRUE);
 
 -- ============================================
 -- 考卷初始数据
@@ -454,6 +486,7 @@ DROP TABLE IF EXISTS wrong_questions;
 DROP TABLE IF EXISTS favorites;
 DROP TABLE IF EXISTS practice_records;
 DROP TABLE IF EXISTS user_progress;
+DROP TABLE IF EXISTS exam_paper_test_answers;
 DROP TABLE IF EXISTS exam_paper_tests;
 DROP TABLE IF EXISTS exam_paper_questions;
 DROP TABLE IF EXISTS exam_papers;
