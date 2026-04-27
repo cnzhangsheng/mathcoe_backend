@@ -105,12 +105,26 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """通用异常处理器 - 记录未捕获的异常"""
-    logger.error(f"未捕获异常: {type(exc).__name__} - {str(exc)} | 路径: {request.url.path}")
+    error_msg = f"{type(exc).__name__}: {str(exc)}"
+    logger.error(f"未捕获异常: {error_msg} | 路径: {request.url.path}")
     logger.error(f"调用栈:\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"}
-    )
+
+    # 开发环境返回详细错误信息
+    if settings.debug:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": error_msg,
+                "type": type(exc).__name__,
+                "path": request.url.path,
+                "traceback": traceback.format_exc().split("\n")
+            }
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
 
 
 @app.get("/health")
