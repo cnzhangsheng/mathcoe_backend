@@ -63,6 +63,7 @@ class QuestionService:
         return QuestionForDiscover(
             id=question.id,
             topic_id=question.topic_id,
+            topic_title=question.topic.title if question.topic else None,
             title=question.title,
             content=question.content,
             question_type=question.question_type or "single",

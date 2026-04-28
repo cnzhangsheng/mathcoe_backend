@@ -161,7 +161,10 @@ class FavoriteRepository(BaseRepository[Favorite]):
         """Get user favorites with question loaded"""
         result = await self.session.execute(
             select(Favorite)
-            .options(selectinload(Favorite.question))
+            .options(
+                selectinload(Favorite.question),
+                selectinload(Favorite.question).selectinload(Question.topic)
+            )
             .where(Favorite.user_id == user_id)
             .order_by(Favorite.created_at.desc())
         )

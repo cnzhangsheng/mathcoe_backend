@@ -96,11 +96,14 @@ class FavoriteDetailResponse(BaseModel):
     id: int
     question_id: int
     question_title: str | None = None
+    question_topic_id: int | None = None
+    question_topic_title: str | None = None
     question_content: dict | None = None
     question_options: list[dict] | None = None
     question_answer: str | None = None
     question_explanation: dict | None = None
     question_difficulty: str | None = None
+    question_type: str = "single"
     created_at: datetime | None
 
     class Config:

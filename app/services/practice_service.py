@@ -148,11 +148,14 @@ class PracticeService:
                 id=f.id,
                 question_id=f.question_id,
                 question_title=f.question.title if f.question else None,
+                question_topic_id=f.question.topic_id if f.question else None,
+                question_topic_title=f.question.topic.title if f.question and f.question.topic else None,
                 question_content=f.question.content if f.question else None,
                 question_options=f.question.options if f.question else None,
                 question_answer=f.question.answer if f.question else None,
                 question_explanation=f.question.explanation if f.question else None,
                 question_difficulty=f.question.difficulty if f.question else None,
+                question_type=f.question.question_type if f.question else "single",
                 created_at=f.created_at,
             )
             for f in favorites
@@ -160,7 +163,23 @@ class PracticeService:
 
     async def add_favorite(self, user_id: int, question_id: int) -> FavoriteResponse:
         """Add question to favorites"""
+        from app.utils import short_id
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Check if already favorited
+        existing = await self.favorite_repo.get_by_user_with_question(user_id)
+        for f in existing:
+            if f.question_id == question_id:
+                logger.info(f"已收藏: user_id={user_id}, question_id={question_id}")
+                return FavoriteResponse(
+                    id=f.id,
+                    question_id=f.question_id,
+                    created_at=f.created_at,
+                )
+
         favorite = await self.favorite_repo.create({
+            "id": short_id(),
             "user_id": user_id,
             "question_id": question_id,
         })

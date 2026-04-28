@@ -28,3 +28,4 @@ class User(BaseModel):
     practice_records = relationship("PracticeRecord", back_populates="user", lazy="selectin")
     favorites = relationship("Favorite", back_populates="user", lazy="selectin")
     wrong_questions = relationship("WrongQuestion", back_populates="user", lazy="selectin")
+    likes = relationship("Like", back_populates="user", lazy="selectin")

@@ -31,3 +31,4 @@ class Question(BaseModel):
     practice_records = relationship("PracticeRecord", back_populates="question", lazy="selectin")
     favorites = relationship("Favorite", back_populates="question", lazy="selectin")
     wrong_questions = relationship("WrongQuestion", back_populates="question", lazy="selectin")
+    likes = relationship("Like", back_populates="question", lazy="selectin")

@@ -94,6 +94,7 @@ class QuestionForDiscover(BaseModel):
     """探索页面题目（含答案和解析）"""
     id: int
     topic_id: int | None
+    topic_title: str | None = None
     title: str
     content: dict | None
     question_type: str = "single"
