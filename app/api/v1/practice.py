@@ -1,7 +1,7 @@
 """
 Practice API router - practice sessions and records
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.api.deps import DBSession, CurrentUser
 from app.schemas.practice import (
@@ -10,6 +10,7 @@ from app.schemas.practice import (
     PracticeSubmitRequest,
     PracticeSubmitResponse,
     PracticeRecordResponse,
+    PracticeRecordsPaginatedResponse,
 )
 from app.services.practice_service import PracticeService
 
@@ -41,8 +42,40 @@ async def submit_answer(request: PracticeSubmitRequest, db: DBSession, current_u
     )
 
 
-@router.get("/records", response_model=list[PracticeRecordResponse])
-async def get_records(db: DBSession, current_user: CurrentUser, limit: int = 50):
-    """Get user practice records"""
+@router.get("/records", response_model=PracticeRecordResponse | PracticeRecordsPaginatedResponse)
+async def get_records(
+    db: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+    detail: bool = Query(default=True),
+    topic_id: int | None = Query(default=None),
+    time_filter: str | None = Query(default=None),
+    result_filter: str | None = Query(default=None),
+):
+    """Get user practice records with pagination and question details
+
+    Args:
+        topic_id: 专题ID筛选
+        time_filter: 时间筛选 (day/week/month)
+        result_filter: 结果筛选 (correct/wrong)
+    """
     service = PracticeService(db)
-    return await service.get_records(current_user["id"], limit)
+    if detail:
+        return await service.get_records_detail(
+            current_user["id"],
+            page,
+            page_size,
+            topic_id=topic_id,
+            time_filter=time_filter,
+            result_filter=result_filter
+        )
+    else:
+        return await service.get_records(current_user["id"], limit=page_size)
+
+
+@router.get("/today-stats")
+async def get_today_stats(db: DBSession, current_user: CurrentUser):
+    """Get user practice statistics for today"""
+    service = PracticeService(db)
+    return await service.get_today_stats(current_user["id"])

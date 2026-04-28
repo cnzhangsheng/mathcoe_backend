@@ -20,6 +20,8 @@ from app.schemas.practice import (
     PracticeStartResponse,
     PracticeSubmitResponse,
     PracticeRecordResponse,
+    PracticeRecordDetailResponse,
+    PracticeRecordsPaginatedResponse,
     FavoriteResponse,
     WrongQuestionResponse,
     WrongQuestionDetailResponse,
@@ -139,6 +141,72 @@ class PracticeService:
             )
             for r in records
         ]
+
+    async def get_records_detail(
+        self,
+        user_id: int,
+        page: int = 1,
+        page_size: int = 10,
+        topic_id: int | None = None,
+        time_filter: str | None = None,
+        result_filter: str | None = None,
+    ) -> PracticeRecordsPaginatedResponse:
+        """Get user practice records with full question info and pagination
+
+        Args:
+            topic_id: 专题ID筛选
+            time_filter: 时间筛选 (day/week/month)
+            result_filter: 结果筛选 (correct/wrong)
+        """
+        skip = (page - 1) * page_size
+        records = await self.record_repo.get_by_user_with_question(
+            user_id,
+            skip,
+            page_size,
+            topic_id=topic_id,
+            time_filter=time_filter,
+            result_filter=result_filter
+        )
+        total = await self.record_repo.count_by_user(
+            user_id,
+            topic_id=topic_id,
+            time_filter=time_filter,
+            result_filter=result_filter
+        )
+
+        # 获取统计数据
+        stats = await self.record_repo.get_user_stats(user_id)
+
+        record_list = [
+            PracticeRecordDetailResponse(
+                id=r.id,
+                question_id=r.question_id,
+                question_title=r.question.title if r.question else None,
+                question_topic_id=r.question.topic_id if r.question else None,
+                question_topic_title=r.question.topic.title if r.question and r.question.topic else None,
+                question_content=r.question.content if r.question else None,
+                question_options=r.question.options if r.question else None,
+                question_answer=r.question.answer if r.question else None,
+                question_type=r.question.question_type if r.question else "single",
+                user_answer=r.user_answer,
+                is_correct=r.is_correct,
+                time_spent=r.time_spent,
+                created_at=r.created_at,
+            )
+            for r in records
+        ]
+
+        return PracticeRecordsPaginatedResponse(
+            records=record_list,
+            total=total,
+            page=page,
+            page_size=page_size,
+            stats=stats,
+        )
+
+    async def get_today_stats(self, user_id: int) -> dict:
+        """Get user practice statistics for today"""
+        return await self.record_repo.get_today_stats(user_id)
 
     async def get_favorites(self, user_id: int) -> list[FavoriteDetailResponse]:
         """Get user favorites with full question info"""

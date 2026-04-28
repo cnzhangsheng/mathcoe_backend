@@ -4,7 +4,7 @@ ExamPaper API for miniapp - 用户端考卷接口
 import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select, func, delete, insert
+from sqlalchemy import select, func, delete, insert, and_, Integer
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DBSession, CurrentUser
@@ -12,7 +12,10 @@ from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.exam_paper_test import ExamPaperTest
 from app.models.exam_paper_test_answer import TestAnswerRecord
 from app.models.question import Question
+from app.models.topic import Topic
 from app.models.favorite import WrongQuestion
+from app.models.practice_record import PracticeRecord
+from app.models.user import User
 from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperWithQuestions,
     ExamPaperTestStart, ExamPaperTestAnswer, ExamPaperTestSubmit,
@@ -210,6 +213,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     correct_count = 0
     correct_answers_summary = {}
     answer_records = []
+    practice_records = []  # 用于同步到PracticeRecord表
     wrong_question_ids = []  # 收集错题ID
 
     for i, q in enumerate(questions, 1):
@@ -227,6 +231,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
             # 收集错题ID
             wrong_question_ids.append(question_id)
 
+        # TestAnswerRecord（考卷测试专用）
         answer_record = TestAnswerRecord(
             test_id=test.id,
             user_id=user["id"],
@@ -239,6 +244,16 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
         )
         answer_records.append(answer_record)
 
+        # PracticeRecord（通用答题记录，用于答题记录页面）
+        practice_record = PracticeRecord(
+            user_id=user["id"],
+            question_id=question_id,
+            user_answer=user_answer or "",
+            is_correct=is_correct,
+            time_spent=0  # 单题时间未知，使用0
+        )
+        practice_records.append(practice_record)
+
     score = int((correct_count / len(questions)) * 100) if questions else 0
 
     # 更新测试记录
@@ -249,6 +264,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     test.status = "completed"
 
     db.add_all(answer_records)
+    db.add_all(practice_records)  # 同步保存到PracticeRecord表
     await db.commit()
 
     # 将错题加入错题本
@@ -301,6 +317,104 @@ async def list_exam_papers(db: DBSession):
     """获取考卷列表"""
     result = await db.execute(select(ExamPaper))
     return list(result.scalars().all())
+
+
+@router.get("/recommended", response_model=list[ExamPaperResponse])
+async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 2):
+    """智能推荐考卷 - 根据薄弱专题推荐，排除已完成的考卷"""
+    # 1. 获取用户信息（年级）
+    user_result = await db.execute(select(User).where(User.id == user["id"]))
+    user_info = user_result.scalar_one_or_none()
+    if not user_info:
+        return []
+
+    # 年级转等级
+    grade_num = int(user_info.grade.replace("G", "")) if user_info.grade else 1
+    if grade_num <= 2:
+        user_level = "A"
+    elif grade_num <= 4:
+        user_level = "B"
+    else:
+        user_level = "C"
+
+    # 2. 查询用户已完成的考卷（排除）
+    completed_result = await db.execute(
+        select(ExamPaperTest.exam_paper_id)
+        .where(ExamPaperTest.user_id == user["id"])
+        .where(ExamPaperTest.status == "completed")
+    )
+    completed_ids = [r for r in completed_result.scalars().all()]
+
+    # 3. 查询用户薄弱专题（正确率最低）
+    # 从practice_records统计各专题正确率
+    topic_stats_result = await db.execute(
+        select(
+            Question.topic_id,
+            func.count(PracticeRecord.id).label("total"),
+            func.coalesce(func.sum(func.cast(PracticeRecord.is_correct, Integer)), 0).label("correct")
+        )
+        .join(Question, PracticeRecord.question_id == Question.id)
+        .where(PracticeRecord.user_id == user["id"])
+        .group_by(Question.topic_id)
+        .order_by(func.coalesce(func.sum(func.cast(PracticeRecord.is_correct, Integer)), 0) / func.count(PracticeRecord.id))
+    )
+    topic_stats = topic_stats_result.all()
+
+    # 构建薄弱专题列表（按正确率升序）
+    weak_topics = []
+    for s in topic_stats:
+        if s.total > 0:
+            rate = s.correct / s.total
+            weak_topics.append({"topic_id": s.topic_id, "rate": rate})
+
+    # 4. 查询符合条件的考卷（等级匹配 + 未完成）
+    papers_result = await db.execute(
+        select(ExamPaper)
+        .where(ExamPaper.level == user_level)
+        .where(ExamPaper.id.not_in(completed_ids) if completed_ids else True)
+    )
+    available_papers = list(papers_result.scalars().all())
+
+    if not available_papers:
+        # 如果没有未完成的考卷，返回空列表
+        return []
+
+    # 5. 计算每个考卷与薄弱专题的匹配度
+    paper_scores = []
+    for paper in available_papers:
+        # 获取该考卷包含的专题
+        paper_topics_result = await db.execute(
+            select(func.distinct(Question.topic_id))
+            .join(ExamPaperQuestion, Question.id == ExamPaperQuestion.question_id)
+            .where(ExamPaperQuestion.exam_paper_id == paper.id)
+        )
+        paper_topic_ids = [t for t in paper_topics_result.scalars().all()]
+
+        # 计算匹配分数：考卷包含的薄弱专题数量
+        match_score = 0
+        for weak in weak_topics:
+            if weak["topic_id"] in paper_topic_ids:
+                # 薄弱专题匹配加分（越薄弱加分越多）
+                match_score += (1 - weak["rate"]) * 10
+
+        paper_scores.append({
+            "paper": paper,
+            "score": match_score,
+            "paper_type": paper.paper_type or "daily"
+        })
+
+    # 6. 排序：优先推荐匹配薄弱专题的考卷
+    # 其次按类型排序：mock > topic > daily
+    type_priority = {"mock": 3, "topic": 2, "daily": 1}
+
+    paper_scores.sort(key=lambda x: (
+        -x["score"],  # 匹配分数降序
+        -type_priority.get(x["paper_type"], 1)  # 类型优先级降序
+    ))
+
+    # 7. 返回推荐考卷（最多limit个）
+    recommended = paper_scores[:limit]
+    return [ExamPaperResponse.model_validate(p["paper"]) for p in recommended]
 
 
 @router.get("/{exam_paper_id}", response_model=ExamPaperWithQuestions)
@@ -428,6 +542,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
     # 计算得分并创建答题记录
     correct_count = 0
     answer_records = []
+    practice_records = []  # 用于同步到PracticeRecord表
     answer_sheet_data = []  # 用于返回答题卡数据
     wrong_question_ids = []  # 收集错题ID
 
@@ -469,7 +584,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
             "question_explanation": question_explanation
         })
 
-        # 答题记录
+        # TestAnswerRecord（考卷测试专用）
         answer_record = TestAnswerRecord(
             test_id=0,  # 临时值，flush后会更新
             user_id=user["id"],
@@ -481,6 +596,16 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
             is_correct=is_correct
         )
         answer_records.append(answer_record)
+
+        # PracticeRecord（通用答题记录，用于答题记录页面）
+        practice_record = PracticeRecord(
+            user_id=user["id"],
+            question_id=question_id,
+            user_answer=user_answer or "",
+            is_correct=is_correct,
+            time_spent=0  # 单题时间未知，使用0
+        )
+        practice_records.append(practice_record)
 
     score = int((correct_count / len(questions)) * 100) if questions else 0
     wrong_count = len(questions) - correct_count
@@ -508,8 +633,9 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
         record.test_id = test.id
 
     db.add_all(answer_records)
+    db.add_all(practice_records)  # 同步保存到PracticeRecord表
     await db.commit()
-    logger.info(f"保存答题记录: {len(answer_records)}条")
+    logger.info(f"保存答题记录: {len(answer_records)}条TestAnswerRecord, {len(practice_records)}条PracticeRecord")
 
     # 将错题加入错题本
     for question_id in wrong_question_ids:

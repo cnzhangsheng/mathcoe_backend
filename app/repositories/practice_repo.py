@@ -34,6 +34,113 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
         )
         return list(result.scalars().all())
 
+    async def get_by_user_with_question(
+        self,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 10,
+        topic_id: int | None = None,
+        time_filter: str | None = None,
+        result_filter: str | None = None,
+    ) -> list[PracticeRecord]:
+        """Get practice records by user ID with question and topic info, with filters"""
+        from sqlalchemy import and_
+
+        # 构建查询条件
+        conditions = [PracticeRecord.user_id == user_id]
+
+        # 专题筛选
+        if topic_id:
+            conditions.append(Question.topic_id == topic_id)
+
+        # 时间筛选
+        if time_filter:
+            now = datetime.utcnow()
+            if time_filter == "day":
+                # 今天
+                day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= day_start)
+            elif time_filter == "week":
+                # 本周（从周一开始）
+                from datetime import timedelta
+                week_start = now - timedelta(days=now.weekday())
+                week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= week_start)
+            elif time_filter == "month":
+                # 本月
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= month_start)
+
+        # 结果筛选
+        if result_filter:
+            if result_filter == "correct":
+                conditions.append(PracticeRecord.is_correct == True)
+            elif result_filter == "wrong":
+                conditions.append(PracticeRecord.is_correct == False)
+
+        query = (
+            select(PracticeRecord)
+            .options(
+                selectinload(PracticeRecord.question),
+                selectinload(PracticeRecord.question).selectinload(Question.topic)
+            )
+            .join(Question, PracticeRecord.question_id == Question.id, isouter=True)
+            .where(and_(*conditions))
+            .order_by(PracticeRecord.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def count_by_user(
+        self,
+        user_id: int,
+        topic_id: int | None = None,
+        time_filter: str | None = None,
+        result_filter: str | None = None,
+    ) -> int:
+        """Get total count of practice records for a user with filters"""
+        from sqlalchemy import and_, func
+
+        conditions = [PracticeRecord.user_id == user_id]
+
+        # 专题筛选
+        if topic_id:
+            conditions.append(Question.topic_id == topic_id)
+
+        # 时间筛选
+        if time_filter:
+            now = datetime.utcnow()
+            if time_filter == "day":
+                day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= day_start)
+            elif time_filter == "week":
+                from datetime import timedelta
+                week_start = now - timedelta(days=now.weekday())
+                week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= week_start)
+            elif time_filter == "month":
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                conditions.append(PracticeRecord.created_at >= month_start)
+
+        # 结果筛选
+        if result_filter:
+            if result_filter == "correct":
+                conditions.append(PracticeRecord.is_correct == True)
+            elif result_filter == "wrong":
+                conditions.append(PracticeRecord.is_correct == False)
+
+        query = (
+            select(func.count(PracticeRecord.id))
+            .join(Question, PracticeRecord.question_id == Question.id, isouter=True)
+            .where(and_(*conditions))
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
     async def get_user_stats(self, user_id: int) -> dict:
         """Get user practice statistics (all time)"""
         total_result = await self.session.execute(
@@ -46,6 +153,35 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
         )
         total = total_result.scalar() or 0
         correct = correct_result.scalar() or 0
+        return {
+            "total": total,
+            "correct": correct,
+            "success_rate": round(correct / total * 100) if total > 0 else 0,
+        }
+
+    async def get_today_stats(self, user_id: int) -> dict:
+        """Get user practice statistics for today"""
+        now = datetime.utcnow()
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 今日答题总数
+        total_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(PracticeRecord.user_id == user_id)
+            .where(PracticeRecord.created_at >= day_start)
+        )
+
+        # 今日正确数量
+        correct_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(PracticeRecord.user_id == user_id)
+            .where(PracticeRecord.created_at >= day_start)
+            .where(PracticeRecord.is_correct == True)
+        )
+
+        total = total_result.scalar() or 0
+        correct = correct_result.scalar() or 0
+
         return {
             "total": total,
             "correct": correct,

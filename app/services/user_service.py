@@ -3,11 +3,13 @@ User service - user related business logic
 """
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.topic import Topic
+from app.models.question import Question
+from app.models.practice_record import PracticeRecord
 from app.repositories.user_repo import UserRepository
 from app.repositories.practice_repo import UserProgressRepository, PracticeRecordRepository, WrongQuestionRepository, FavoriteRepository
 from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar, UserUpdate
@@ -27,8 +29,8 @@ class UserService:
         self.favorite_repo = FavoriteRepository(session)
 
     def get_week_range(self) -> tuple[datetime, datetime]:
-        """Get current week start and end (Monday to Sunday)"""
-        now = datetime.now()
+        """Get current week start and end (Monday to Sunday) in UTC"""
+        now = datetime.utcnow()
         # 找到本周周一
         weekday = now.weekday()  # 0=Monday, 6=Sunday
         week_start = now - timedelta(days=weekday)
@@ -59,48 +61,56 @@ class UserService:
         ]
 
     async def get_user_ability_radar(self, user_id: int) -> UserAbilityRadar:
-        """Calculate user ability radar based on 5 topics"""
+        """Calculate user ability radar based on practice_records"""
+        from sqlalchemy import Integer
+
         # 获取所有专题
         topics_result = await self.session.execute(
             select(Topic).order_by(Topic.id)
         )
         topics = list(topics_result.scalars().all())
 
-        # 获取用户在所有专题上的进度
-        progress_list = await self.progress_repo.get_all_by_user_with_topic(user_id)
+        # 从practice_records直接统计各专题的答题正确率
+        # 查询：按topic_id分组，统计总数和正确数
+        stats_result = await self.session.execute(
+            select(
+                Question.topic_id,
+                func.count(PracticeRecord.id).label("total"),
+                func.coalesce(func.sum(func.cast(PracticeRecord.is_correct, Integer)), 0).label("correct")
+            )
+            .join(Question, PracticeRecord.question_id == Question.id)
+            .where(PracticeRecord.user_id == user_id)
+            .group_by(Question.topic_id)
+        )
+        stats = stats_result.all()
 
-        # 构建进度字典，方便查找
-        progress_map = {p["topic_id"]: p for p in progress_list}
+        # 构建专题统计字典
+        stats_map = {s.topic_id: {"total": s.total, "correct": s.correct or 0} for s in stats}
 
         # 构建能力雷达：每个专题一个能力维度
         abilities = []
-        total_success_rate = 0
+        total_correct = 0
         total_questions = 0
-        topic_count = 0
 
         for topic in topics:
-            progress_data = progress_map.get(topic.id)
-
-            if progress_data:
-                # 有进度数据，使用实际数据
-                success_rate = progress_data["success_rate"]
-                questions_done = progress_data["questions_done"]
-                total_success_rate += success_rate * questions_done
-                total_questions += questions_done
+            topic_stats = stats_map.get(topic.id)
+            if topic_stats and topic_stats["total"] > 0:
+                # 有答题数据，计算正确率
+                success_rate = round((topic_stats["correct"] / topic_stats["total"]) * 100)
+                total_correct += topic_stats["correct"]
+                total_questions += topic_stats["total"]
             else:
-                # 没有进度数据，显示为0
+                # 没有答题数据，显示为0
                 success_rate = 0
-                questions_done = 0
 
             abilities.append({
-                "label": topic.title,  # 直接使用专题名称
+                "label": topic.title,
                 "value": success_rate,
             })
-            topic_count += 1
 
         # 计算整体排名
-        # 基于加权平均正确率和练习量
-        avg_success_rate = round(total_success_rate / total_questions) if total_questions > 0 else 0
+        # 基于加权平均正确率和练习量因子
+        avg_success_rate = round((total_correct / total_questions) * 100) if total_questions > 0 else 0
 
         # 排名算法：正确率 * 0.7 + 练习量因子 * 0.3
         # 练习量因子：每10题贡献5分，上限50分
