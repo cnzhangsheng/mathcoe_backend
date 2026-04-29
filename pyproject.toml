@@ -1,7 +1,7 @@
 [project]
-name = "kangaroo-math-backend"
+name = "kangaroo-math-assistant-backend"
 version = "0.1.0"
-description = "Kangaroo Math Brain Backend - FastAPI + PostgreSQL"
+description = "Kangaroo Math Assistant Backend"
 requires-python = ">=3.10"
 readme = "README.md"
 
