@@ -9,12 +9,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # PostgreSQL
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
-    postgres_user: str = "postgres"
-    postgres_password: str = ""
-    postgres_db: str = "kangaroo_math"
+    # MySQL
+    mysql_host: str = "localhost"
+    mysql_port: int = 3306
+    mysql_user: str = "root"
+    mysql_password: str = ""
+    mysql_db: str = "kangaroo_math"
 
     # WeChat Mini Program
     wx_appid: str = ""
@@ -32,18 +32,18 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Build PostgreSQL connection URL"""
+        """Build MySQL async connection URL"""
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"mysql+aiomysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
         )
 
     @property
     def database_url_sync(self) -> str:
-        """Build PostgreSQL sync connection URL for Alembic"""
+        """Build MySQL sync connection URL for Alembic"""
         return (
-            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
         )
 
 

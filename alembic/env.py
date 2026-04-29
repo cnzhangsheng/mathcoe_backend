@@ -48,6 +48,7 @@ def run_migrations_online() -> None:
     connectable = create_engine(
         settings.database_url_sync,
         poolclass=pool.NullPool,
+        connect_args={"charset": "utf8mb4"},
     )
 
     with connectable.connect() as connection:
