@@ -11,7 +11,6 @@ from sqlalchemy.orm import selectinload
 from app.repositories.question_repo import QuestionRepository
 from app.repositories.practice_repo import (
     PracticeRecordRepository,
-    UserProgressRepository,
     WrongQuestionRepository,
     FavoriteRepository,
 )
@@ -38,7 +37,6 @@ class PracticeService:
         self.session = session
         self.question_repo = QuestionRepository(session)
         self.record_repo = PracticeRecordRepository(session)
-        self.progress_repo = UserProgressRepository(session)
         self.wrong_repo = WrongQuestionRepository(session)
         self.favorite_repo = FavoriteRepository(session)
 
@@ -47,16 +45,14 @@ class PracticeService:
         user_id: int,
         topic_id: int | None = None,
         mode: str = "normal",
-        difficulty: str | None = None,
         year: int | None = None,
+        level: int | None = None,
     ) -> PracticeStartResponse:
         """Start a practice session"""
-        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}")
+        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}, level={level}")
         # 根据条件获取题目
         if topic_id:
-            questions = await self.question_repo.get_by_topic(topic_id, limit=10)
-        elif difficulty:
-            questions = await self.question_repo.get_by_difficulty(difficulty, limit=10)
+            questions = await self.question_repo.get_by_topic(topic_id, limit=10, level=level)
         elif year:
             questions = await self.question_repo.get_by_year(year, limit=10)
         else:
@@ -72,8 +68,7 @@ class PracticeService:
                 "options": q.options,
                 "answer": q.answer,
                 "explanation": q.explanation,
-                "difficulty": q.difficulty,
-                "level": q.level,
+                "difficulty_level": q.difficulty_level,
                 "question_type": q.question_type,
             }
             for q in questions
@@ -222,7 +217,7 @@ class PracticeService:
                 question_options=f.question.options if f.question else None,
                 question_answer=f.question.answer if f.question else None,
                 question_explanation=f.question.explanation if f.question else None,
-                question_difficulty=f.question.difficulty if f.question else None,
+                question_difficulty_level=f.question.difficulty_level if f.question else None,
                 question_type=f.question.question_type if f.question else "single",
                 created_at=f.created_at,
             )
@@ -282,7 +277,7 @@ class PracticeService:
                 question_options=w.question.options if w.question else None,
                 question_answer=w.question.answer if w.question else None,
                 question_explanation=w.question.explanation if w.question else None,
-                question_difficulty=w.question.difficulty if w.question else None,
+                question_difficulty_level=w.question.difficulty_level if w.question else None,
                 user_answer=last_wrong_answer,
                 retry_count=w.retry_count,
                 mastered=w.mastered,

@@ -31,9 +31,10 @@ async def wechat_login(request: WeChatLoginRequest, db: DBSession):
         openid,
         nickname=request.nickname,
         avatar_url=request.avatar_url,
-        grade=request.grade
+        grade=request.grade,
+        difficulty_level=request.difficulty_level
     )
-    logger.info(f"用户登录成功: user_id={user.id}, openid={openid}")
+    logger.info(f"用户登录成功: user_id={user.id}, openid={openid}, difficulty_level={request.difficulty_level}")
 
     # 生成 JWT token
     token = auth_service.create_token(user.id, openid)
@@ -44,7 +45,8 @@ async def wechat_login(request: WeChatLoginRequest, db: DBSession):
         openid=openid,
         nickname=user.nickname,
         avatar_url=user.avatar_url,
-        grade=user.grade
+        grade=user.grade,
+        difficulty_level=user.difficulty_level
     )
 
 

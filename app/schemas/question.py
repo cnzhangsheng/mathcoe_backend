@@ -31,8 +31,7 @@ class QuestionBase(BaseModel):
     options: list[dict] | None = None  # [{label: A, text: str, image: str}]
     answer: str  # 单选: "A", 多选: "A,B"
     explanation: dict | None = None  # {text: str, images: []}
-    difficulty: str | None = None
-    level: int  # 级别 1-6，必选
+    difficulty_level: int  # 级别 1-6，必选
     source_year: int | None = None
     tags: list[str] | None = None
 
@@ -48,8 +47,7 @@ class QuestionUpdate(BaseModel):
     options: list[dict] | None = None
     answer: str | None = None
     explanation: dict | None = None
-    difficulty: str | None = None
-    level: int | None = None  # 级别 1-6
+    difficulty_level: int | None = None  # 级别 1-6
     source_year: int | None = None
     tags: list[str] | None = None
     topic_id: int | None = None
@@ -64,8 +62,7 @@ class QuestionResponse(BaseModel):
     options: list[dict] | None
     answer: str
     explanation: dict | None
-    difficulty: str | None
-    level: int | None  # 级别 1-6
+    difficulty_level: int | None  # 级别 1-6
     source_year: int | None
     tags: list[str] | None
     created_at: datetime | None
@@ -83,8 +80,7 @@ class QuestionForPractice(BaseModel):
     content: dict | None
     question_type: str = "single"  # 默认单选题
     options: list[dict] | None
-    difficulty: str | None
-    level: int | None = 1  # 默认级别
+    difficulty_level: int | None = 1  # 默认级别
 
     class Config:
         from_attributes = True
@@ -101,8 +97,7 @@ class QuestionForDiscover(BaseModel):
     options: list[dict] | None
     answer: str
     explanation: dict | None
-    difficulty: str | None
-    level: int | None = 1
+    difficulty_level: int | None = 1
 
     class Config:
         from_attributes = True

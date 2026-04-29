@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession, CurrentUser
-from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar, UserUpdate, UserStatsResponse
+from app.schemas.user import UserResponse, UserAbilityRadar, UserUpdate, UserStatsResponse, UserInsightResponse
 from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
@@ -20,18 +20,18 @@ async def get_current_user(db: DBSession, current_user: CurrentUser):
     return await service.get_user(current_user["id"])
 
 
-@router.get("/progress", response_model=list[UserProgressResponse])
-async def get_user_progress(db: DBSession, current_user: CurrentUser):
-    """Get user progress for all topics"""
-    service = UserService(db)
-    return await service.get_user_progress(current_user["id"])
-
-
 @router.get("/ability-radar", response_model=UserAbilityRadar)
 async def get_ability_radar(db: DBSession, current_user: CurrentUser):
     """Get user ability radar"""
     service = UserService(db)
     return await service.get_user_ability_radar(current_user["id"])
+
+
+@router.get("/insight", response_model=UserInsightResponse)
+async def get_user_insight(db: DBSession, current_user: CurrentUser):
+    """Get AI learning insight"""
+    service = UserService(db)
+    return await service.get_user_insight(current_user["id"])
 
 
 @router.get("/stats", response_model=UserStatsResponse)

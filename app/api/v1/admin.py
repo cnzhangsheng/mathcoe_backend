@@ -11,7 +11,6 @@ from app.models.user import User
 from app.models.topic import Topic
 from app.models.question import Question
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
-from app.models.user_progress import UserProgress
 from app.models.practice_record import PracticeRecord
 from app.schemas.user import UserResponse
 from app.schemas.topic import TopicResponse, TopicCreate, TopicUpdate
@@ -35,7 +34,6 @@ async def list_users(
 ):
     """获取用户列表"""
     query = select(User).options(
-        noload(User.progress),
         noload(User.practice_records),
         noload(User.favorites),
         noload(User.wrong_questions)
@@ -51,12 +49,7 @@ async def list_users(
 async def get_user_detail(user_id: int, db: DBSession):
     """获取用户详情"""
     result = await db.execute(
-        select(User).options(
-            noload(User.progress),
-            noload(User.practice_records),
-            noload(User.favorites),
-            noload(User.wrong_questions)
-        ).where(User.id == user_id)
+        select(User).where(User.id == user_id)
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -72,7 +65,6 @@ async def list_topics_admin(db: DBSession):
     result = await db.execute(
         select(Topic).options(
             noload(Topic.questions),
-            noload(Topic.user_progress)
         )
     )
     return list(result.scalars().all())
@@ -94,7 +86,6 @@ async def update_topic(topic_id: int, data: TopicUpdate, db: DBSession):
     result = await db.execute(
         select(Topic).options(
             noload(Topic.questions),
-            noload(Topic.user_progress)
         ).where(Topic.id == topic_id)
     )
     topic = result.scalar_one_or_none()
@@ -113,7 +104,6 @@ async def delete_topic(topic_id: int, db: DBSession):
     result = await db.execute(
         select(Topic).options(
             noload(Topic.questions),
-            noload(Topic.user_progress)
         ).where(Topic.id == topic_id)
     )
     topic = result.scalar_one_or_none()
@@ -132,7 +122,6 @@ async def list_questions_admin(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     topic_id: int | None = None,
-    difficulty: str | None = None,
     level: int | None = None
 ):
     """获取题目列表"""
@@ -144,10 +133,8 @@ async def list_questions_admin(
     )
     if topic_id:
         query = query.where(Question.topic_id == topic_id)
-    if difficulty:
-        query = query.where(Question.difficulty == difficulty)
     if level:
-        query = query.where(Question.level == level)
+        query = query.where(Question.difficulty_level == level)
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -287,13 +274,13 @@ async def list_exam_papers(
     db: DBSession,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    level: str | None = None,
+    difficulty_level: int | None = None,
     paper_type: str | None = None
 ):
     """获取考卷列表"""
     query = select(ExamPaper)
-    if level:
-        query = query.where(ExamPaper.level == level)
+    if difficulty_level:
+        query = query.where(ExamPaper.difficulty_level == difficulty_level)
     if paper_type:
         query = query.where(ExamPaper.paper_type == paper_type)
     query = query.offset((page - 1) * size).limit(size)

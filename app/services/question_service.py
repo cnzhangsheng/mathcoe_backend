@@ -19,15 +19,12 @@ class QuestionService:
     async def get_questions(
         self,
         topic_id: int | None = None,
-        difficulty: str | None = None,
         year: int | None = None,
         limit: int = 20,
     ) -> list[QuestionForPractice]:
         """Get questions with filters"""
         if topic_id:
             questions = await self.question_repo.get_by_topic(topic_id, limit)
-        elif difficulty:
-            questions = await self.question_repo.get_by_difficulty(difficulty, limit)
         elif year:
             questions = await self.question_repo.get_by_year(year, limit)
         else:
@@ -39,7 +36,6 @@ class QuestionService:
                 topic_id=q.topic_id,
                 title=q.title,
                 content=q.content,
-                difficulty=q.difficulty,
                 options=q.content.get("options") if q.content else None,
             )
             for q in questions
@@ -52,9 +48,12 @@ class QuestionService:
             return None
         return QuestionResponse.model_validate(question)
 
-    async def get_random_question(self) -> QuestionForDiscover | None:
-        """Get a random question for discover page"""
-        questions = await self.question_repo.get_all(limit=100)
+    async def get_random_question(self, level: int | None = None) -> QuestionForDiscover | None:
+        """Get a random question for discover page, optionally filtered by level"""
+        if level:
+            questions = await self.question_repo.get_by_level(level, limit=100)
+        else:
+            questions = await self.question_repo.get_all(limit=100)
         if not questions:
             return None
 
@@ -70,6 +69,5 @@ class QuestionService:
             options=question.options,
             answer=question.answer,
             explanation=question.explanation,
-            difficulty=question.difficulty,
-            level=question.level,
+            difficulty_level=question.difficulty_level,
         )

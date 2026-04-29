@@ -26,7 +26,7 @@ class QuestionBasic(BaseModel):
 
 class ExamPaperBase(BaseModel):
     title: str
-    level: str  # A/B/C/D/E/F
+    difficulty_level: int = 1  # 难度等级 1-6
     total_questions: int = 10
     description: str | None = None
     paper_type: str = "daily"  # daily/mock/topic
@@ -38,7 +38,7 @@ class ExamPaperCreate(ExamPaperBase):
 
 class ExamPaperUpdate(BaseModel):
     title: str | None = None
-    level: str | None = None
+    difficulty_level: int | None = None
     total_questions: int | None = None
     description: str | None = None
     paper_type: str | None = None
@@ -47,7 +47,7 @@ class ExamPaperUpdate(BaseModel):
 class ExamPaperResponse(BaseModel):
     id: int
     title: str
-    level: str
+    difficulty_level: int
     total_questions: int
     description: str | None
     paper_type: str

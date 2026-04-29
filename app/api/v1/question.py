@@ -14,13 +14,12 @@ router = APIRouter()
 async def get_questions(
     db: DBSession,
     topic_id: int | None = None,
-    difficulty: str | None = None,
     year: int | None = None,
     limit: int = 20,
 ):
     """Get questions with filters"""
     service = QuestionService(db)
-    return await service.get_questions(topic_id, difficulty, year, limit)
+    return await service.get_questions(topic_id, year, limit)
 
 
 @router.get("/{question_id}", response_model=QuestionResponse)

@@ -3,7 +3,7 @@ User service - user related business logic
 """
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import select, func
+from sqlalchemy import select, func, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,8 +11,8 @@ from app.models.topic import Topic
 from app.models.question import Question
 from app.models.practice_record import PracticeRecord
 from app.repositories.user_repo import UserRepository
-from app.repositories.practice_repo import UserProgressRepository, PracticeRecordRepository, WrongQuestionRepository, FavoriteRepository
-from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar, UserUpdate
+from app.repositories.practice_repo import PracticeRecordRepository, WrongQuestionRepository, FavoriteRepository
+from app.schemas.user import UserResponse, UserAbilityRadar, UserUpdate, UserInsightResponse
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ class UserService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.user_repo = UserRepository(session)
-        self.progress_repo = UserProgressRepository(session)
         self.record_repo = PracticeRecordRepository(session)
         self.wrong_repo = WrongQuestionRepository(session)
         self.favorite_repo = FavoriteRepository(session)
@@ -46,19 +45,58 @@ class UserService:
             return None
         return UserResponse.model_validate(user)
 
-    async def get_user_progress(self, user_id: int) -> list[UserProgressResponse]:
-        """Get user progress for all topics with topic title"""
-        progress_list = await self.progress_repo.get_all_by_user_with_topic(user_id)
-        return [
-            UserProgressResponse(
-                topic_id=p["topic_id"],
-                topic_title=p["topic_title"],
-                progress=p["progress"],
-                success_rate=p["success_rate"],
-                questions_done=p["questions_done"],
+    async def get_user_insight(self, user_id: int) -> UserInsightResponse:
+        """Get AI learning insight for user"""
+        # 按专题统计答题正确率，找出最薄弱专题
+        topic_stats = await self.session.execute(
+            select(
+                Question.topic_id,
+                Topic.title.label("topic_title"),
+                func.count(PracticeRecord.id).label("total"),
+                func.coalesce(func.sum(func.cast(PracticeRecord.is_correct, Integer)), 0).label("correct"),
             )
-            for p in progress_list
-        ]
+            .join(Question, PracticeRecord.question_id == Question.id)
+            .join(Topic, Question.topic_id == Topic.id)
+            .where(PracticeRecord.user_id == user_id)
+            .group_by(Question.topic_id, Topic.title)
+        )
+        rows = topic_stats.all()
+
+        # 查找正确率最低的专题
+        weakest_id = None
+        weakest_title = "未知专题"
+        lowest_rate = 101
+
+        for row in rows:
+            rate = round((row.correct / row.total) * 100) if row.total > 0 else 0
+            if rate < lowest_rate:
+                lowest_rate = rate
+                weakest_id = row.topic_id
+                weakest_title = row.topic_title
+
+        # 本周 vs 上周正确率变化
+        week_start, week_end = self.get_week_range()
+        last_week_start = week_start - timedelta(days=7)
+
+        this_week = await self.record_repo.get_user_stats_by_week(user_id, week_start, week_end)
+        last_week = await self.record_repo.get_user_stats_by_week(user_id, last_week_start, week_start)
+
+        gain = 0
+        if last_week["total"] > 0:
+            gain = this_week["success_rate"] - last_week["success_rate"]
+        elif this_week["total"] > 0:
+            gain = this_week["success_rate"]
+
+        # 总答题数
+        total_query = select(func.count(PracticeRecord.id)).where(PracticeRecord.user_id == user_id)
+        total = (await self.session.execute(total_query)).scalar() or 0
+
+        return UserInsightResponse(
+            weakest_topic_id=weakest_id,
+            weakest_topic_title=weakest_title,
+            progress_gain=gain,
+            analysis_base=total,
+        )
 
     async def get_user_ability_radar(self, user_id: int) -> UserAbilityRadar:
         """Calculate user ability radar based on practice_records"""

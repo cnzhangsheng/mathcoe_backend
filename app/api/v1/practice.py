@@ -2,8 +2,10 @@
 Practice API router - practice sessions and records
 """
 from fastapi import APIRouter, Query
+from sqlalchemy import select
 
 from app.api.deps import DBSession, CurrentUser
+from app.models.user import User
 from app.schemas.practice import (
     PracticeStartRequest,
     PracticeStartResponse,
@@ -20,13 +22,18 @@ router = APIRouter()
 @router.post("/start", response_model=PracticeStartResponse)
 async def start_practice(request: PracticeStartRequest, db: DBSession, current_user: CurrentUser):
     """Start a practice session"""
+    # 获取用户难度等级
+    user_result = await db.execute(select(User).where(User.id == current_user["id"]))
+    user_info = user_result.scalar_one_or_none()
+    level = user_info.difficulty_level if user_info else None
+
     service = PracticeService(db)
     return await service.start_practice(
         user_id=current_user["id"],
         topic_id=request.topic_id,
         mode=request.mode,
-        difficulty=request.difficulty,
         year=request.year,
+        level=level,
     )
 
 

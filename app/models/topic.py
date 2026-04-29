@@ -21,4 +21,3 @@ class Topic(BaseModel):
 
     # Relationships
     questions = relationship("Question", back_populates="topic", lazy="selectin")
-    user_progress = relationship("UserProgress", back_populates="topic", lazy="selectin")

@@ -1,6 +1,6 @@
 # Kangaroo Math Brain Backend
 
-袋鼠数学智练后端服务 - FastAPI + PostgreSQL
+袋鼠数学助理后端服务 - FastAPI + PostgreSQL
 
 ## 快速开始
 

@@ -2,7 +2,7 @@
 Schemas module - Pydantic models for request/response validation
 """
 from app.schemas.auth import WeChatLoginRequest, WeChatLoginResponse, TokenResponse
-from app.schemas.user import UserResponse, UserProgressResponse, UserAbilityRadar
+from app.schemas.user import UserResponse, UserAbilityRadar, UserInsightResponse
 from app.schemas.topic import TopicResponse, TopicWithProgress
 from app.schemas.question import QuestionResponse, QuestionForPractice
 from app.schemas.practice import (
@@ -21,8 +21,8 @@ __all__ = [
     "WeChatLoginResponse",
     "TokenResponse",
     "UserResponse",
-    "UserProgressResponse",
     "UserAbilityRadar",
+    "UserInsightResponse",
     "TopicResponse",
     "TopicWithProgress",
     "QuestionResponse",

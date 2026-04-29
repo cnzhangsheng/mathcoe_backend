@@ -13,7 +13,7 @@ class ExamPaper(BaseModel):
     __tablename__ = "exam_papers"
 
     title: Mapped[str] = mapped_column(String(128), nullable=False)
-    level: Mapped[str] = mapped_column(String(2), nullable=False)  # A/B/C/D/E/F
+    difficulty_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # 难度等级 1-6
     total_questions: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic

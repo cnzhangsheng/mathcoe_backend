@@ -1,5 +1,5 @@
 """
-Practice repository - data access for PracticeRecord, UserProgress, Favorite, WrongQuestion
+Practice repository - data access for PracticeRecord, Favorite, WrongQuestion
 """
 import logging
 from datetime import datetime
@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.practice_record import PracticeRecord
-from app.models.user_progress import UserProgress
 from app.models.favorite import Favorite, WrongQuestion
 from app.models.question import Question
 from app.repositories.base import BaseRepository
@@ -234,50 +233,6 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
             "wrong": wrong,
             "success_rate": round(correct / total * 100) if total > 0 else 0,
         }
-
-
-class UserProgressRepository(BaseRepository[UserProgress]):
-    """Repository for UserProgress model"""
-
-    def __init__(self, session: AsyncSession):
-        super().__init__(UserProgress, session)
-
-    async def get_by_user_topic(self, user_id: int, topic_id: int) -> UserProgress | None:
-        """Get user progress for a specific topic"""
-        result = await self.session.execute(
-            select(UserProgress)
-            .where(UserProgress.user_id == user_id)
-            .where(UserProgress.topic_id == topic_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def get_all_by_user(self, user_id: int) -> list[UserProgress]:
-        """Get all progress for a user"""
-        result = await self.session.execute(
-            select(UserProgress)
-            .options(selectinload(UserProgress.topic))
-            .where(UserProgress.user_id == user_id)
-        )
-        return list(result.scalars().all())
-
-    async def get_all_by_user_with_topic(self, user_id: int) -> list[dict]:
-        """Get all progress for a user with topic info"""
-        result = await self.session.execute(
-            select(UserProgress)
-            .options(selectinload(UserProgress.topic))
-            .where(UserProgress.user_id == user_id)
-        )
-        progress_list = result.scalars().all()
-        return [
-            {
-                "topic_id": p.topic_id,
-                "topic_title": p.topic.title if p.topic else None,
-                "progress": p.progress,
-                "success_rate": p.success_rate,
-                "questions_done": p.questions_done,
-            }
-            for p in progress_list
-        ]
 
 
 class FavoriteRepository(BaseRepository[Favorite]):

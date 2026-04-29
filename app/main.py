@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="袋鼠数学智练后端服务",
+    description="袋鼠数学助理后端服务",
     lifespan=lifespan,
 )
 

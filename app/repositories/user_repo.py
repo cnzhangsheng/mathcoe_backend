@@ -25,7 +25,8 @@ class UserRepository(BaseRepository[User]):
         openid: str,
         nickname: str | None = None,
         avatar_url: str | None = None,
-        grade: str = "G1"
+        grade: str = "G1",
+        difficulty_level: int = 1
     ) -> User:
         """Create user if not exists, otherwise update and return existing user"""
         user = await self.get_by_openid(openid)
@@ -37,6 +38,7 @@ class UserRepository(BaseRepository[User]):
                 "nickname": nickname or default_nickname,
                 "avatar_url": avatar_url,
                 "grade": grade,
+                "difficulty_level": difficulty_level,
                 "last_login_at": datetime.now(),
             })
         else:
@@ -45,8 +47,10 @@ class UserRepository(BaseRepository[User]):
                 user.nickname = nickname
             if avatar_url is not None:
                 user.avatar_url = avatar_url
+            user.grade = grade
+            user.difficulty_level = difficulty_level
             user.last_active_date = date.today()
-            user.last_login_at = datetime.now()  # 更新最后登录时间
+            user.last_login_at = datetime.now()
             await self.session.commit()
             await self.session.refresh(user)
         return user

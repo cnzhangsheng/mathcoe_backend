@@ -67,23 +67,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_questions_topic_id", "questions", ["topic_id"])
 
-    # User progress table
-    op.create_table(
-        "user_progress",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("topic_id", sa.Integer(), nullable=False),
-        sa.Column("progress", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("success_rate", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("questions_done", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.utcnow()),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.utcnow()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["topic_id"], ["topics.id"]),
-        sa.UniqueConstraint("user_id", "topic_id", name="uq_user_topic"),
-    )
-
     # Practice records table
     op.create_table(
         "practice_records",
@@ -137,7 +120,6 @@ def downgrade() -> None:
     op.drop_table("wrong_questions")
     op.drop_table("favorites")
     op.drop_table("practice_records")
-    op.drop_table("user_progress")
     op.drop_table("questions")
     op.drop_table("topics")
     op.drop_table("users")

@@ -313,9 +313,17 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
 # ============ 考卷基础接口 ============
 
 @router.get("", response_model=list[ExamPaperResponse])
-async def list_exam_papers(db: DBSession):
-    """获取考卷列表"""
-    result = await db.execute(select(ExamPaper))
+async def list_exam_papers(db: DBSession, user: CurrentUser):
+    """获取考卷列表，按用户难度等级过滤"""
+    # 获取用户难度等级
+    user_result = await db.execute(select(User).where(User.id == user["id"]))
+    user_info = user_result.scalar_one_or_none()
+    if not user_info:
+        return []
+
+    result = await db.execute(
+        select(ExamPaper).where(ExamPaper.difficulty_level == user_info.difficulty_level)
+    )
     return list(result.scalars().all())
 
 
@@ -328,14 +336,14 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
     if not user_info:
         return []
 
-    # 年级转等级
+    # 年级转难度等级
     grade_num = int(user_info.grade.replace("G", "")) if user_info.grade else 1
     if grade_num <= 2:
-        user_level = "A"
+        user_difficulty = 1
     elif grade_num <= 4:
-        user_level = "B"
+        user_difficulty = 2
     else:
-        user_level = "C"
+        user_difficulty = 3
 
     # 2. 查询用户已完成的考卷（排除）
     completed_result = await db.execute(
@@ -370,7 +378,7 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
     # 4. 查询符合条件的考卷（等级匹配 + 未完成）
     papers_result = await db.execute(
         select(ExamPaper)
-        .where(ExamPaper.level == user_level)
+        .where(ExamPaper.difficulty_level == user_difficulty)
         .where(ExamPaper.id.not_in(completed_ids) if completed_ids else True)
     )
     available_papers = list(papers_result.scalars().all())

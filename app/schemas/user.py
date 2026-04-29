@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     nickname: str | None = None
     avatar_url: str | None = None
     grade: str = "G1"
+    difficulty_level: int = 1
 
     @field_validator('grade')
     @classmethod
@@ -30,6 +31,7 @@ class UserUpdate(BaseModel):
     last_active_date: date | None = None
     grade: str | None = None
     daily_goal: int | None = None
+    difficulty_level: int | None = None
 
     @field_validator('grade')
     @classmethod
@@ -64,20 +66,18 @@ class UserResponse(BaseModel):
     updated_at: datetime | None
     grade: str
     daily_goal: int
+    difficulty_level: int
 
     class Config:
         from_attributes = True
 
 
-class UserProgressResponse(BaseModel):
-    topic_id: int
-    topic_title: str | None = None
-    progress: int
-    success_rate: int
-    questions_done: int
-
-    class Config:
-        from_attributes = True
+class UserInsightResponse(BaseModel):
+    """AI learning insight data"""
+    weakest_topic_id: int | None = None
+    weakest_topic_title: str = "未知专题"
+    progress_gain: int = 0
+    analysis_base: int = 0
 
 
 class UserAbilityRadar(BaseModel):

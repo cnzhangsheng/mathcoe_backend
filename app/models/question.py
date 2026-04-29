@@ -21,8 +21,7 @@ class Question(BaseModel):
     options: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     answer: Mapped[str] = mapped_column(String(32), nullable=False)
     explanation: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    difficulty: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    level: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 级别 1-6
+    difficulty_level: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 级别 1-6
     source_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 

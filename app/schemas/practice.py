@@ -8,7 +8,6 @@ from pydantic import BaseModel
 class PracticeStartRequest(BaseModel):
     topic_id: int | None = None  # 专题练习
     mode: str = "normal"  # normal / exam
-    difficulty: str | None = None
     year: int | None = None  # 历年真题
 
 
@@ -81,7 +80,7 @@ class WrongQuestionDetailResponse(BaseModel):
     question_options: list[dict] | None = None
     question_answer: str | None = None
     question_explanation: dict | None = None
-    question_difficulty: str | None = None
+    question_difficulty_level: int | None = None
     user_answer: str | None = None  # 最近一次错误答案
     retry_count: int
     mastered: bool
@@ -102,7 +101,7 @@ class FavoriteDetailResponse(BaseModel):
     question_options: list[dict] | None = None
     question_answer: str | None = None
     question_explanation: dict | None = None
-    question_difficulty: str | None = None
+    question_difficulty_level: int | None = None
     question_type: str = "single"
     created_at: datetime | None
 
