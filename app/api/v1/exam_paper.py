@@ -330,20 +330,14 @@ async def list_exam_papers(db: DBSession, user: CurrentUser):
 @router.get("/recommended", response_model=list[ExamPaperResponse])
 async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 2):
     """智能推荐考卷 - 根据薄弱专题推荐，排除已完成的考卷"""
-    # 1. 获取用户信息（年级）
+    # 1. 获取用户信息
     user_result = await db.execute(select(User).where(User.id == user["id"]))
     user_info = user_result.scalar_one_or_none()
     if not user_info:
         return []
 
-    # 年级转难度等级
-    grade_num = int(user_info.grade.replace("G", "")) if user_info.grade else 1
-    if grade_num <= 2:
-        user_difficulty = 1
-    elif grade_num <= 4:
-        user_difficulty = 2
-    else:
-        user_difficulty = 3
+    # 使用用户难度等级（1-6），与用户答题水平挂钩
+    user_difficulty = user_info.difficulty_level or 1
 
     # 2. 查询用户已完成的考卷（排除）
     completed_result = await db.execute(
