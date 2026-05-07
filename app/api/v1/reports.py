@@ -12,6 +12,8 @@ from app.models.practice_record import PracticeRecord
 from app.models.like import Like
 from app.models.favorite import Favorite
 from app.models.topic import Topic
+from app.models.exam_paper import ExamPaper
+from app.models.exam_paper_test import ExamPaperTest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,4 +103,109 @@ async def get_topic_preference_report(db: DBSession):
         "items": items,
         "top_favorites": top_favorites,
         "top_likes": top_likes,
+    }
+
+
+@router.get("/reports/exam-paper-stats")
+async def get_exam_paper_stats_report(db: DBSession):
+    """考卷用户统计数据：考卷维度统计"""
+    # 整体考卷测试统计
+    total_result = await db.execute(select(func.count(ExamPaperTest.id)))
+    total_tests = total_result.scalar() or 0
+
+    completed_result = await db.execute(
+        select(func.count(ExamPaperTest.id)).where(ExamPaperTest.status == "completed")
+    )
+    completed_tests = completed_result.scalar() or 0
+
+    users_result = await db.execute(select(func.count(func.distinct(ExamPaperTest.user_id))))
+    total_users = users_result.scalar() or 0
+
+    avg_score_result = await db.execute(
+        select(func.avg(ExamPaperTest.score.cast(Integer))).where(ExamPaperTest.status == "completed")
+    )
+    avg_score = round(float(avg_score_result.scalar() or 0), 1)
+
+    # 按考卷类型统计
+    type_result = await db.execute(
+        select(
+            ExamPaper.paper_type,
+            func.count(ExamPaperTest.id).label("test_count"),
+            func.sum(func.cast(ExamPaperTest.status == "completed", Integer)).label("completed_count"),
+            func.avg(ExamPaperTest.score.cast(Integer)).label("avg_score"),
+        )
+        .join(ExamPaper, ExamPaper.id == ExamPaperTest.exam_paper_id)
+        .group_by(ExamPaper.paper_type)
+    )
+    type_rows = type_result.all()
+    type_labels = {"daily": "每日一练", "mock": "模拟卷", "topic": "专项训练"}
+
+    type_stats = []
+    for r in type_rows:
+        type_stats.append({
+            "paper_type": r.paper_type,
+            "type_label": type_labels.get(r.paper_type, r.paper_type),
+            "test_count": r.test_count,
+            "completed_count": r.completed_count or 0,
+            "completion_rate": round((r.completed_count or 0) / r.test_count * 100, 1) if r.test_count > 0 else 0,
+            "avg_score": round(float(r.avg_score or 0), 1),
+        })
+
+    # 热门考卷 TOP 10（按测试次数）
+    top_result = await db.execute(
+        select(
+            ExamPaper.id,
+            ExamPaper.title,
+            ExamPaper.paper_type,
+            func.count(ExamPaperTest.id).label("test_count"),
+            func.avg(ExamPaperTest.score.cast(Integer)).label("avg_score"),
+            func.count(func.distinct(ExamPaperTest.user_id)).label("user_count"),
+        )
+        .join(ExamPaperTest, ExamPaperTest.exam_paper_id == ExamPaper.id)
+        .group_by(ExamPaper.id, ExamPaper.title, ExamPaper.paper_type)
+        .order_by(desc("test_count"))
+        .limit(10)
+    )
+    top_rows = top_result.all()
+
+    top_papers = []
+    for r in top_rows:
+        top_papers.append({
+            "id": r.id,
+            "title": r.title,
+            "paper_type": r.paper_type,
+            "type_label": type_labels.get(r.paper_type, r.paper_type),
+            "test_count": r.test_count,
+            "avg_score": round(float(r.avg_score or 0), 1),
+            "user_count": r.user_count,
+        })
+
+    # 分数分布（考卷测试的得分分布）
+    score_distribution = await db.execute(
+        select(
+            func.floor(ExamPaperTest.score / 10).label("bucket"),
+            func.count(ExamPaperTest.id).label("count"),
+        )
+        .where(ExamPaperTest.status == "completed")
+        .where(ExamPaperTest.score.isnot(None))
+        .group_by("bucket")
+        .order_by("bucket")
+    )
+    dist_rows = score_distribution.all()
+    score_dist = []
+    for r in dist_rows:
+        bucket_start = r.bucket * 10
+        score_dist.append({
+            "range": f"{bucket_start}-{bucket_start + 9}",
+            "count": r.count,
+        })
+
+    return {
+        "total_tests": total_tests,
+        "completed_tests": completed_tests,
+        "total_users": total_users,
+        "avg_score": avg_score,
+        "type_stats": type_stats,
+        "top_papers": top_papers,
+        "score_distribution": score_dist,
     }

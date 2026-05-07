@@ -34,6 +34,7 @@ async def start_practice(request: PracticeStartRequest, db: DBSession, current_u
         mode=request.mode,
         year=request.year,
         level=level,
+        sort_by=request.sort_by,
     )
 
 

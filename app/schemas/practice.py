@@ -11,6 +11,7 @@ class PracticeStartRequest(BaseModel):
     topic_id: int | None = None  # 专题练习
     mode: str = "normal"  # normal / exam
     year: int | None = None  # 历年真题
+    sort_by: str = "default"  # 题目排序: default / time / random / likes / favorites / wrong_count
 
 
 class PracticeStartResponse(BaseQuestionSchema):

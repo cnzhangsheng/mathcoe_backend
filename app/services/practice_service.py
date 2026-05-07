@@ -47,12 +47,13 @@ class PracticeService:
         mode: str = "normal",
         year: int | None = None,
         level: int | None = None,
+        sort_by: str = "default",
     ) -> PracticeStartResponse:
         """Start a practice session"""
-        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}, level={level}")
+        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}, level={level}, sort_by={sort_by}")
         # 根据条件获取题目
         if topic_id:
-            questions = await self.question_repo.get_by_topic(topic_id, limit=10, level=level)
+            questions = await self.question_repo.get_by_topic(topic_id, limit=10, level=level, sort_by=sort_by)
         elif year:
             questions = await self.question_repo.get_by_year(year, limit=10)
         else:
