@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先复制依赖文件 → 利用 Docker 缓存，加速构建
 COPY pyproject.toml ./
+COPY README.md ./
 
 # 安装项目依赖（不缓存，减小镜像体积）
 RUN pip install --no-cache-dir --upgrade pip \
