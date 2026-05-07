@@ -4,10 +4,12 @@ ExamPaper schemas - 考卷相关数据结构
 from datetime import datetime
 from pydantic import BaseModel
 
+from app.schemas.question import BaseQuestionSchema
+
 
 # ============ Question Basic Schema ============
 
-class QuestionBasic(BaseModel):
+class QuestionBasic(BaseQuestionSchema):
     """题目基本信息（用于考卷详情）"""
     id: int
     title: str
@@ -51,6 +53,9 @@ class ExamPaperResponse(BaseModel):
     total_questions: int
     description: str | None
     paper_type: str
+    is_new: bool = False
+    user_completed: bool = False
+    user_score: int | None = None
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -135,7 +140,7 @@ class ExamPaperTestDetail(ExamPaperTestResponse):
     correct_answers_summary: dict[int, str] | None = None
 
 
-class AnswerSheetItem(BaseModel):
+class AnswerSheetItem(BaseQuestionSchema):
     """答题卡单项"""
     index: int
     question_id: int
@@ -201,7 +206,7 @@ class WrongQuestionStats(BaseModel):
     wrong_rate: float  # 错误率（百分比）
 
 
-class UserWrongQuestion(BaseModel):
+class UserWrongQuestion(BaseQuestionSchema):
     """用户错题详情"""
     question_id: int
     question_title: str | None = None

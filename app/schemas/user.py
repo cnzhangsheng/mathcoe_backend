@@ -86,7 +86,8 @@ class UserAbilityRadar(BaseModel):
 
 
 class UserStatsResponse(BaseModel):
-    """User learning statistics (weekly)"""
+    """User learning statistics (weekly + monthly)"""
+    # 本周统计
     week_start: str
     week_end: str
     total_questions: int
@@ -95,3 +96,10 @@ class UserStatsResponse(BaseModel):
     correct_rate: int
     total_wrong_count: int
     favorite_count: int
+    # 本月统计
+    month_start: str | None = None
+    month_end: str | None = None
+    month_total_questions: int = 0
+    month_correct_count: int = 0
+    month_wrong_count: int = 0
+    month_correct_rate: int = 0

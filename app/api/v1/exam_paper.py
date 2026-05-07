@@ -314,7 +314,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
 
 @router.get("", response_model=list[ExamPaperResponse])
 async def list_exam_papers(db: DBSession, user: CurrentUser):
-    """获取考卷列表，按用户难度等级过滤"""
+    """获取考卷列表，按用户难度等级过滤，附带用户作答状态"""
     # 获取用户难度等级
     user_result = await db.execute(select(User).where(User.id == user["id"]))
     user_info = user_result.scalar_one_or_none()
@@ -322,9 +322,53 @@ async def list_exam_papers(db: DBSession, user: CurrentUser):
         return []
 
     result = await db.execute(
-        select(ExamPaper).where(ExamPaper.difficulty_level == user_info.difficulty_level)
+        select(ExamPaper)
+        .where(ExamPaper.difficulty_level == user_info.difficulty_level)
+        .order_by(ExamPaper.created_at.desc())
     )
-    return list(result.scalars().all())
+    papers = list(result.scalars().all())
+
+    if not papers:
+        return []
+
+    # 查询用户对这些考卷的测试记录
+    paper_ids = [p.id for p in papers]
+    tests_result = await db.execute(
+        select(ExamPaperTest.exam_paper_id, ExamPaperTest.score, ExamPaperTest.status)
+        .where(ExamPaperTest.user_id == user["id"])
+        .where(ExamPaperTest.exam_paper_id.in_(paper_ids))
+    )
+    user_tests = tests_result.all()
+
+    # 构建 paper_id -> 测试记录 的映射
+    test_map: dict[int, tuple[int | None, str]] = {}
+    for t in user_tests:
+        # 如果同一考卷有多条记录，取最新（score 最高的）已完成记录
+        existing = test_map.get(t.exam_paper_id)
+        if existing and existing[1] == "completed":
+            continue
+        if t.status == "completed":
+            test_map[t.exam_paper_id] = (t.score, t.status)
+
+    # 组装响应
+    responses = []
+    for paper in papers:
+        test_info = test_map.get(paper.id)
+        responses.append(ExamPaperResponse(
+            id=paper.id,
+            title=paper.title,
+            difficulty_level=paper.difficulty_level,
+            total_questions=paper.total_questions,
+            description=paper.description,
+            paper_type=paper.paper_type,
+            is_new=paper.is_new,
+            user_completed=test_info is not None,
+            user_score=test_info[0] if test_info else None,
+            created_at=paper.created_at,
+            updated_at=paper.updated_at,
+        ))
+
+    return responses
 
 
 @router.get("/recommended", response_model=list[ExamPaperResponse])
@@ -374,49 +418,79 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
         select(ExamPaper)
         .where(ExamPaper.difficulty_level == user_difficulty)
         .where(ExamPaper.id.not_in(completed_ids) if completed_ids else True)
+        .order_by(ExamPaper.created_at.desc())
     )
     available_papers = list(papers_result.scalars().all())
 
     if not available_papers:
-        # 如果没有未完成的考卷，返回空列表
-        return []
-
-    # 5. 计算每个考卷与薄弱专题的匹配度
-    paper_scores = []
-    for paper in available_papers:
-        # 获取该考卷包含的专题
-        paper_topics_result = await db.execute(
-            select(func.distinct(Question.topic_id))
-            .join(ExamPaperQuestion, Question.id == ExamPaperQuestion.question_id)
-            .where(ExamPaperQuestion.exam_paper_id == paper.id)
+        # 如果没有未完成的考卷，尝试获取所有等级最新考卷
+        fallback_result = await db.execute(
+            select(ExamPaper)
+            .order_by(ExamPaper.created_at.desc())
+            .limit(limit)
         )
-        paper_topic_ids = [t for t in paper_topics_result.scalars().all()]
+        final_papers = list(fallback_result.scalars().all())
+    else:
+        paper_scores = []
+        for paper in available_papers:
+            paper_topics_result = await db.execute(
+                select(func.distinct(Question.topic_id))
+                .join(ExamPaperQuestion, Question.id == ExamPaperQuestion.question_id)
+                .where(ExamPaperQuestion.exam_paper_id == paper.id)
+            )
+            paper_topic_ids = [t for t in paper_topics_result.scalars().all()]
 
-        # 计算匹配分数：考卷包含的薄弱专题数量
-        match_score = 0
-        for weak in weak_topics:
-            if weak["topic_id"] in paper_topic_ids:
-                # 薄弱专题匹配加分（越薄弱加分越多）
-                match_score += (1 - weak["rate"]) * 10
+            match_score = 0
+            for weak in weak_topics:
+                if weak["topic_id"] in paper_topic_ids:
+                    match_score += (1 - weak["rate"]) * 10
 
-        paper_scores.append({
-            "paper": paper,
-            "score": match_score,
-            "paper_type": paper.paper_type or "daily"
-        })
+            paper_scores.append({
+                "paper": paper,
+                "score": match_score,
+                "paper_type": paper.paper_type or "daily"
+            })
 
-    # 6. 排序：优先推荐匹配薄弱专题的考卷
-    # 其次按类型排序：mock > topic > daily
-    type_priority = {"mock": 3, "topic": 2, "daily": 1}
+        type_priority = {"mock": 3, "topic": 2, "daily": 1}
+        paper_scores.sort(key=lambda x: (
+            -x["score"],
+            -type_priority.get(x["paper_type"], 1),
+            -(x["paper"].created_at.timestamp() if x["paper"].created_at else 0)
+        ))
 
-    paper_scores.sort(key=lambda x: (
-        -x["score"],  # 匹配分数降序
-        -type_priority.get(x["paper_type"], 1)  # 类型优先级降序
-    ))
+        final_papers = [p["paper"] for p in paper_scores[:limit]]
 
-    # 7. 返回推荐考卷（最多limit个）
-    recommended = paper_scores[:limit]
-    return [ExamPaperResponse.model_validate(p["paper"]) for p in recommended]
+    # 查询用户对这些考卷的测试记录，标记已作答状态
+    paper_ids = [p.id for p in final_papers]
+    tests_result = await db.execute(
+        select(ExamPaperTest.exam_paper_id, ExamPaperTest.score, ExamPaperTest.status)
+        .where(ExamPaperTest.user_id == user["id"])
+        .where(ExamPaperTest.exam_paper_id.in_(paper_ids))
+    )
+    test_map: dict[int, int | None] = {}
+    for t in tests_result.all():
+        existing = test_map.get(t.exam_paper_id)
+        if existing is not None:
+            continue
+        if t.status == "completed":
+            test_map[t.exam_paper_id] = t.score
+
+    return [
+        ExamPaperResponse(
+            id=p.id,
+            title=p.title,
+            difficulty_level=p.difficulty_level,
+            total_questions=p.total_questions,
+            description=p.description,
+            paper_type=p.paper_type,
+            is_new=p.is_new,
+            user_completed=p.id in test_map,
+            user_score=test_map.get(p.id),
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+        for p in final_papers
+    ]
 
 
 @router.get("/{exam_paper_id}", response_model=ExamPaperWithQuestions)

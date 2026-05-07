@@ -2,7 +2,7 @@
 ExamPaperTest model - 考卷测试记录
 """
 from datetime import datetime
-from sqlalchemy import BigInteger, Integer, String, DateTime, ForeignKey
+from sqlalchemy import BigInteger, Integer, String, DateTime, ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -19,7 +19,7 @@ class ExamPaperTest(BaseModel):
     correct_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 正确数量
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)  # 总题数
     time_spent: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 用时（秒）
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="in_progress", nullable=False)  # in_progress/completed
 

@@ -3,7 +3,7 @@ Base model with common fields
 """
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime
+from sqlalchemy import BigInteger, DateTime, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.utils.id_generator import short_id
@@ -18,9 +18,9 @@ class Base(DeclarativeBase):
 class TimestampMixin:
     """Mixin for created_at and updated_at timestamps"""
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, server_default=text('CURRENT_TIMESTAMP'), onupdate=datetime.now(), nullable=False
     )
 
 

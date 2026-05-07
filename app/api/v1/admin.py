@@ -122,7 +122,7 @@ async def list_questions_admin(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     topic_id: int | None = None,
-    level: int | None = None
+    difficulty_level: int | None = None
 ):
     """获取题目列表"""
     query = select(Question).options(
@@ -133,8 +133,8 @@ async def list_questions_admin(
     )
     if topic_id:
         query = query.where(Question.topic_id == topic_id)
-    if level:
-        query = query.where(Question.difficulty_level == level)
+    if difficulty_level:
+        query = query.where(Question.difficulty_level == difficulty_level)
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())

@@ -1,8 +1,62 @@
 """
 Question schemas
 """
+import re
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_serializer
+
+from app.core.config import settings
+from app.utils.helpers import process_img_url
+
+
+class BaseQuestionSchema(BaseModel):
+    """Base class for schemas containing question HTML content.
+
+    Automatically prefixes relative /api/v1/static/ image URLs with the
+    configured server_host during serialization.
+    """
+
+    @model_serializer(mode="wrap")
+    def _process_html_urls(self, nxt):
+        data = nxt(self)
+        base_url = settings.server_host.rstrip("/")
+
+        content_fields = {"content", "explanation", "question_content", "question_explanation"}
+        for field in content_fields:
+            if field in data and isinstance(data[field], dict) and "text" in data[field]:
+                data[field] = dict(data[field], text=process_img_url(data[field].get("text", ""), base_url))
+
+        options_fields = {"options", "question_options"}
+        for field in options_fields:
+            if field in data and isinstance(data[field], list):
+                data[field] = [
+                    dict(opt, text=process_img_url(opt.get("text", ""), base_url))
+                    if isinstance(opt, dict) else opt
+                    for opt in data[field]
+                ]
+
+        if "questions" in data and isinstance(data["questions"], list):
+            data["questions"] = [
+                _process_question_dict(q, base_url) if isinstance(q, dict) else q
+                for q in data["questions"]
+            ]
+
+        return data
+
+
+def _process_question_dict(d: dict, base_url: str) -> dict:
+    """Process HTML fields in a single question dict (for PracticeStartResponse.questions etc.)"""
+    result = dict(d)
+    for field in ("content", "explanation"):
+        if field in result and isinstance(result[field], dict) and "text" in result[field]:
+            result[field] = dict(result[field], text=process_img_url(result[field].get("text", ""), base_url))
+    if "options" in result and isinstance(result["options"], list):
+        result["options"] = [
+            dict(opt, text=process_img_url(opt.get("text", ""), base_url))
+            if isinstance(opt, dict) else opt
+            for opt in result["options"]
+        ]
+    return result
 
 
 class QuestionContent(BaseModel):
@@ -53,7 +107,7 @@ class QuestionUpdate(BaseModel):
     topic_id: int | None = None
 
 
-class QuestionResponse(BaseModel):
+class QuestionResponse(BaseQuestionSchema):
     id: int
     topic_id: int | None
     title: str
@@ -72,7 +126,7 @@ class QuestionResponse(BaseModel):
         from_attributes = True
 
 
-class QuestionForPractice(BaseModel):
+class QuestionForPractice(BaseQuestionSchema):
     """题目（不含答案）"""
     id: int
     topic_id: int | None
@@ -86,7 +140,7 @@ class QuestionForPractice(BaseModel):
         from_attributes = True
 
 
-class QuestionForDiscover(BaseModel):
+class QuestionForDiscover(BaseQuestionSchema):
     """探索页面题目（含答案和解析）"""
     id: int
     topic_id: int | None

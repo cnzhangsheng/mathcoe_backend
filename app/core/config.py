@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     app_name: str = "Kangaroo Math Brain"
     app_version: str = "0.1.0"
     debug: bool = True
+    server_host: str = "http://127.0.0.1:8000"
 
     @property
     def database_url(self) -> str:

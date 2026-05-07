@@ -4,6 +4,8 @@ Practice schemas
 from datetime import datetime
 from pydantic import BaseModel
 
+from app.schemas.question import BaseQuestionSchema
+
 
 class PracticeStartRequest(BaseModel):
     topic_id: int | None = None  # 专题练习
@@ -11,7 +13,7 @@ class PracticeStartRequest(BaseModel):
     year: int | None = None  # 历年真题
 
 
-class PracticeStartResponse(BaseModel):
+class PracticeStartResponse(BaseQuestionSchema):
     session_id: str  # 本次练习会话ID
     questions: list[dict]
     total: int
@@ -24,7 +26,7 @@ class PracticeSubmitRequest(BaseModel):
     time_spent: int | None = None  # 用时（秒）
 
 
-class PracticeSubmitResponse(BaseModel):
+class PracticeSubmitResponse(BaseQuestionSchema):
     is_correct: bool
     correct_answer: str
     explanation: str | dict | None = None
@@ -69,7 +71,7 @@ class WrongQuestionResponse(BaseModel):
         from_attributes = True
 
 
-class WrongQuestionDetailResponse(BaseModel):
+class WrongQuestionDetailResponse(BaseQuestionSchema):
     """错题详情响应 - 包含完整题目信息"""
     id: int
     question_id: int
@@ -90,7 +92,7 @@ class WrongQuestionDetailResponse(BaseModel):
         from_attributes = True
 
 
-class FavoriteDetailResponse(BaseModel):
+class FavoriteDetailResponse(BaseQuestionSchema):
     """收藏详情响应 - 包含完整题目信息"""
     id: int
     question_id: int
@@ -109,7 +111,7 @@ class FavoriteDetailResponse(BaseModel):
         from_attributes = True
 
 
-class PracticeRecordDetailResponse(BaseModel):
+class PracticeRecordDetailResponse(BaseQuestionSchema):
     """答题记录详情响应 - 包含完整题目信息"""
     id: int
     question_id: int

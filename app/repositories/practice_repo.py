@@ -54,7 +54,7 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
 
         # 时间筛选
         if time_filter:
-            now = datetime.utcnow()
+            now = datetime.now()
             if time_filter == "day":
                 # 今天
                 day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -111,7 +111,7 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
 
         # 时间筛选
         if time_filter:
-            now = datetime.utcnow()
+            now = datetime.now()
             if time_filter == "day":
                 day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 conditions.append(PracticeRecord.created_at >= day_start)
@@ -160,7 +160,7 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
 
     async def get_today_stats(self, user_id: int) -> dict:
         """Get user practice statistics for today"""
-        now = datetime.utcnow()
+        now = datetime.now()
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # 今日答题总数
@@ -219,6 +219,50 @@ class PracticeRecordRepository(BaseRepository[PracticeRecord]):
                 PracticeRecord.user_id == user_id,
                 PracticeRecord.created_at >= week_start,
                 PracticeRecord.created_at < week_end,
+                PracticeRecord.is_correct == False
+            ))
+        )
+
+        total = total_result.scalar() or 0
+        correct = correct_result.scalar() or 0
+        wrong = wrong_result.scalar() or 0
+
+        return {
+            "total": total,
+            "correct": correct,
+            "wrong": wrong,
+            "success_rate": round(correct / total * 100) if total > 0 else 0,
+        }
+
+    async def get_user_stats_by_month(self, user_id: int, month_start: datetime, month_end: datetime) -> dict:
+        """Get user practice statistics for a specific month"""
+        from sqlalchemy import and_
+
+        total_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= month_start,
+                PracticeRecord.created_at < month_end
+            ))
+        )
+
+        correct_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= month_start,
+                PracticeRecord.created_at < month_end,
+                PracticeRecord.is_correct == True
+            ))
+        )
+
+        wrong_result = await self.session.execute(
+            select(func.count(PracticeRecord.id))
+            .where(and_(
+                PracticeRecord.user_id == user_id,
+                PracticeRecord.created_at >= month_start,
+                PracticeRecord.created_at < month_end,
                 PracticeRecord.is_correct == False
             ))
         )
@@ -310,7 +354,7 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
             )
             .where(WrongQuestion.user_id == user_id)
             .where(WrongQuestion.mastered == mastered)
-            .order_by(WrongQuestion.created_at.desc())
+            .order_by(WrongQuestion.last_retry_at.desc(), WrongQuestion.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -332,7 +376,7 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
             })
         else:
             wrong.retry_count += 1
-            wrong.last_retry_at = datetime.utcnow()
+            wrong.last_retry_at = datetime.now()
             await self.session.commit()
             await self.session.refresh(wrong)
             logger.info(f"更新错题记录: user_id={user_id}, question_id={question_id}, retry_count={wrong.retry_count}")

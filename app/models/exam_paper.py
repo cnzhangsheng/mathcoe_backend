@@ -1,7 +1,7 @@
 """
 ExamPaper model - 考卷
 """
-from sqlalchemy import BigInteger, Integer, String, Text, ForeignKey
+from sqlalchemy import BigInteger, Boolean, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -17,6 +17,7 @@ class ExamPaper(BaseModel):
     total_questions: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic
+    is_new: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
 
     # Relationships
     questions = relationship("ExamPaperQuestion", back_populates="exam_paper", lazy="selectin", order_by="ExamPaperQuestion.sort")

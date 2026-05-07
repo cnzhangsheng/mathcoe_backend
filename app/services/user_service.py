@@ -38,6 +38,17 @@ class UserService:
         week_end = week_start + timedelta(days=7)
         return week_start, week_end
 
+    def get_month_range(self) -> tuple[datetime, datetime]:
+        """Get current month start and end in UTC"""
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # 下个月第一天
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1)
+        return month_start, month_end
+
     async def get_user(self, user_id: int) -> UserResponse | None:
         """Get user by ID"""
         user = await self.user_repo.get_by_id(user_id)
@@ -161,11 +172,15 @@ class UserService:
         )
 
     async def get_user_stats(self, user_id: int) -> dict:
-        """Get user learning statistics for current week"""
+        """Get user learning statistics for current week and month"""
         week_start, week_end = self.get_week_range()
+        month_start, month_end = self.get_month_range()
 
         # 本周答题统计
         week_stats = await self.record_repo.get_user_stats_by_week(user_id, week_start, week_end)
+
+        # 本月答题统计
+        month_stats = await self.record_repo.get_user_stats_by_month(user_id, month_start, month_end)
 
         # 本周新增错题数量
         wrong_questions = await self.wrong_repo.get_by_user(user_id, mastered=False)
@@ -177,13 +192,19 @@ class UserService:
 
         return {
             "week_start": week_start.strftime("%Y-%m-%d"),
-            "week_end": week_end.strftime("%Y-%m-%d"),
+            "week_end": (week_end - timedelta(days=1)).strftime("%Y-%m-%d"),
             "total_questions": week_stats["total"],
             "correct_count": week_stats["correct"],
             "wrong_count": week_stats["wrong"],
             "correct_rate": week_stats["success_rate"],
-            "total_wrong_count": wrong_count,  # 总错题数
+            "total_wrong_count": wrong_count,
             "favorite_count": favorite_count,
+            "month_start": month_start.strftime("%Y-%m-%d"),
+            "month_end": (month_end - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "month_total_questions": month_stats["total"],
+            "month_correct_count": month_stats["correct"],
+            "month_wrong_count": month_stats["wrong"],
+            "month_correct_rate": month_stats["success_rate"],
         }
 
     async def update_user(self, user_id: int, data: UserUpdate) -> UserResponse | None:
