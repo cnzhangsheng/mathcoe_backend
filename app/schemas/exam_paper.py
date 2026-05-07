@@ -13,7 +13,8 @@ class QuestionBasic(BaseQuestionSchema):
     """题目基本信息（用于考卷详情）"""
     id: int
     title: str
-    level: int | None = None
+    topic_id: int | None = None
+    difficulty_level: int | None = None
     question_type: str
     options: list[dict] | None = None
     content: dict | None = None

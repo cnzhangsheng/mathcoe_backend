@@ -38,7 +38,10 @@ async def list_users(
     db: DBSession,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    keyword: str | None = None
+    keyword: str | None = None,
+    grade: str | None = None,
+    difficulty_level: int | None = None,
+    daily_goal: int | None = None,
 ):
     """获取用户列表"""
     query = select(User).options(
@@ -48,6 +51,12 @@ async def list_users(
     )
     if keyword:
         query = query.where(User.nickname.ilike(f"%{keyword}%"))
+    if grade:
+        query = query.where(User.grade == grade)
+    if difficulty_level:
+        query = query.where(User.difficulty_level == difficulty_level)
+    if daily_goal:
+        query = query.where(User.daily_goal == daily_goal)
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())

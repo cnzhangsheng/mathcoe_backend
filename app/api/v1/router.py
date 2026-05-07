@@ -3,7 +3,7 @@ V1 API router aggregation
 """
 from fastapi import APIRouter
 
-from app.api.v1 import auth, user, topic, question, practice, favorites, admin_auth, admin, upload, exam_paper, discover, like
+from app.api.v1 import auth, user, topic, question, practice, favorites, admin_auth, admin, upload, exam_paper, discover, like, reports
 
 router = APIRouter()
 
@@ -18,4 +18,5 @@ router.include_router(like.router, prefix="/likes", tags=["likes"])
 router.include_router(discover.router, prefix="/discover", tags=["discover"])
 router.include_router(admin_auth.router, prefix="/admin", tags=["admin-auth"])
 router.include_router(admin.router, prefix="/admin", tags=["admin"])
+router.include_router(reports.router, prefix="/admin", tags=["admin-reports"])
 router.include_router(upload.router, tags=["upload"])
