@@ -1,7 +1,11 @@
 """
 Admin management API - 用户、专题、题目、考卷管理
 """
+import os
+from urllib.parse import quote
+
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
@@ -19,6 +23,10 @@ from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperCreate, ExamPaperUpdate, ExamPaperWithQuestions,
     ExamPaperQuestionCreate, ExamPaperQuestionUpdate, ExamPaperQuestionResponse
 )
+from app.utils.pdf import render_exam_paper_pdf_stream
+
+PDF_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "storage", "exam_papers")
+os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
 
 router = APIRouter()
 
@@ -344,6 +352,84 @@ async def delete_exam_paper(exam_paper_id: int, db: DBSession):
     await db.delete(exam_paper)
     await db.commit()
     return {"message": "删除成功"}
+
+
+@router.post("/exam-papers/{exam_paper_id}/export-pdf")
+async def export_admin_exam_paper_pdf(exam_paper_id: int, db: DBSession):
+    """生成并导出考卷 PDF，保存到本地存储"""
+    # 查询考卷
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    # 加载题目
+    questions_result = await db.execute(
+        select(ExamPaperQuestion)
+        .options(selectinload(ExamPaperQuestion.question))
+        .where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+        .order_by(ExamPaperQuestion.sort)
+    )
+    ep_questions = list(questions_result.scalars().all())
+
+    if not ep_questions:
+        raise HTTPException(status_code=400, detail="考卷无题目")
+
+    # 组装题目数据
+    questions_data = []
+    for eq in ep_questions:
+        q = eq.question
+        questions_data.append({
+            "content": q.content,
+            "options": q.options,
+            "explanation": q.explanation,
+            "answer": q.answer,
+        })
+
+    # 生成 PDF
+    pdf_stream = render_exam_paper_pdf_stream(
+        title=exam_paper.title,
+        difficulty_level=exam_paper.difficulty_level,
+        description=exam_paper.description,
+        questions=questions_data,
+    )
+
+    # 保存到本地存储
+    pdf_path = os.path.join(PDF_STORAGE_DIR, f"{exam_paper_id}.pdf")
+    with open(pdf_path, "wb") as f:
+        f.write(pdf_stream.getvalue())
+
+    # 更新数据库 file_path
+    exam_paper.file_path = pdf_path
+    await db.commit()
+
+    # 返回 PDF 流
+    pdf_stream.seek(0)
+    filename = quote(f"{exam_paper.title}.pdf")
+    return StreamingResponse(
+        pdf_stream,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.get("/exam-papers/{exam_paper_id}/download-pdf")
+async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession):
+    """下载已生成的考卷 PDF"""
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    if not exam_paper.file_path or not os.path.exists(exam_paper.file_path):
+        raise HTTPException(status_code=404, detail="PDF 文件不存在，请先生成 PDF")
+
+    filename = quote(f"{exam_paper.title}.pdf")
+    return StreamingResponse(
+        open(exam_paper.file_path, "rb"),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 # ============ 考卷题目管理 ============

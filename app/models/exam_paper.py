@@ -18,6 +18,7 @@ class ExamPaper(BaseModel):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic
     is_new: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    file_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # Relationships
     questions = relationship("ExamPaperQuestion", back_populates="exam_paper", lazy="selectin", order_by="ExamPaperQuestion.sort")

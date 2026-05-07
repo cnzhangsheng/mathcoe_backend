@@ -54,6 +54,7 @@ class ExamPaperResponse(BaseModel):
     description: str | None
     paper_type: str
     is_new: bool = False
+    file_path: str | None = None
     user_completed: bool = False
     user_score: int | None = None
     created_at: datetime | None

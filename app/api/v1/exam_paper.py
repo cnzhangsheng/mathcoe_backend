@@ -2,12 +2,15 @@
 ExamPaper API for miniapp - 用户端考卷接口
 """
 import logging
+import os
 from datetime import datetime
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, delete, insert, and_, Integer
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import DBSession, CurrentUser
+from app.api.deps import DBSession, CurrentUser, CurrentUserOptional
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.exam_paper_test import ExamPaperTest
 from app.models.exam_paper_test_answer import TestAnswerRecord
@@ -23,6 +26,9 @@ from app.schemas.exam_paper import (
     ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport
 )
 from app.utils.id_generator import short_id
+from urllib.parse import quote
+
+from app.utils.pdf import render_exam_paper_pdf_stream
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -361,6 +367,7 @@ async def list_exam_papers(db: DBSession, user: CurrentUser):
             total_questions=paper.total_questions,
             description=paper.description,
             paper_type=paper.paper_type,
+            file_path=paper.file_path,
             is_new=paper.is_new,
             user_completed=test_info is not None,
             user_score=test_info[0] if test_info else None,
@@ -483,6 +490,7 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
             total_questions=p.total_questions,
             description=p.description,
             paper_type=p.paper_type,
+            file_path=p.file_path,
             is_new=p.is_new,
             user_completed=p.id in test_map,
             user_score=test_map.get(p.id),
@@ -510,6 +518,74 @@ async def get_exam_paper(exam_paper_id: int, db: DBSession):
     )
     exam_paper.questions = list(questions_result.scalars().all())
     return exam_paper
+
+
+@router.get("/{exam_paper_id}/export-pdf")
+async def export_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
+    """导出考卷为 PDF 文件"""
+    # 查询考卷
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    # 加载题目
+    questions_result = await db.execute(
+        select(ExamPaperQuestion)
+        .options(selectinload(ExamPaperQuestion.question))
+        .where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+        .order_by(ExamPaperQuestion.sort)
+    )
+    ep_questions = list(questions_result.scalars().all())
+
+    if not ep_questions:
+        raise HTTPException(status_code=400, detail="考卷无题目")
+
+    # 组装题目数据
+    questions_data = []
+    for eq in ep_questions:
+        q = eq.question
+        questions_data.append({
+            "content": q.content,
+            "options": q.options,
+            "explanation": q.explanation,
+            "answer": q.answer,
+        })
+
+    # 生成 PDF
+    pdf_stream = render_exam_paper_pdf_stream(
+        title=exam_paper.title,
+        difficulty_level=exam_paper.difficulty_level,
+        description=exam_paper.description,
+        questions=questions_data,
+    )
+
+    filename = f"{exam_paper.title}.pdf"
+    encoded_filename = quote(filename)
+    return StreamingResponse(
+        pdf_stream,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
+    )
+
+
+@router.get("/{exam_paper_id}/download-pdf")
+async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
+    """下载已生成的考卷 PDF（从 file_path 读取）"""
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    if not exam_paper.file_path or not os.path.exists(exam_paper.file_path):
+        raise HTTPException(status_code=404, detail="PDF 文件不存在，请先在管理后台生成 PDF")
+
+    filename = quote(f"{exam_paper.title}.pdf")
+    return StreamingResponse(
+        open(exam_paper.file_path, "rb"),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.post("/{exam_paper_id}/start", response_model=ExamPaperTestResponse)

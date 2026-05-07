@@ -51,6 +51,11 @@ LOGGING_CONFIG = {
             "level": "INFO",
             "propagate": True,
         },
+        "sqlalchemy.engine": {
+            "level": "WARNING",
+            "handlers": ["console", "file"],
+            "propagate": False,
+        },
     },
     "root": {
         "handlers": ["console", "file"],
