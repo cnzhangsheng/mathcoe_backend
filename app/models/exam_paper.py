@@ -16,7 +16,7 @@ class ExamPaper(BaseModel):
     difficulty_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # 难度等级 1-6
     total_questions: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic
+    paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic/past
     is_new: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
 

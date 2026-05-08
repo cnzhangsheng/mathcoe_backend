@@ -32,7 +32,7 @@ class ExamPaperBase(BaseModel):
     difficulty_level: int = 1  # 难度等级 1-6
     total_questions: int = 10
     description: str | None = None
-    paper_type: str = "daily"  # daily/mock/topic
+    paper_type: str = "daily"  # daily/mock/topic/past
 
 
 class ExamPaperCreate(ExamPaperBase):

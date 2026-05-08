@@ -458,7 +458,7 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
                 "paper_type": paper.paper_type or "daily"
             })
 
-        type_priority = {"mock": 3, "topic": 2, "daily": 1}
+        type_priority = {"mock": 3, "topic": 2, "daily": 1, "past": 4}
         paper_scores.sort(key=lambda x: (
             -x["score"],
             -type_priority.get(x["paper_type"], 1),
