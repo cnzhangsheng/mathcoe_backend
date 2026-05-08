@@ -37,3 +37,6 @@ app/static/uploads/*
 # OS
 .DS_Store
 Thumbs.db
+
+# storage
+storage/*
