@@ -116,6 +116,16 @@ def _img_url_to_data_uri(img_url: str) -> str:
     return data_uri
 
 
+def _strip_img_style_width(html_text: str) -> str:
+    """Remove width & height from inline style on <img> tags to preserve natural size."""
+    return re.sub(
+        r'(<img\s[^>]*?style\s*=\s*")([^"]*)("[^>]*?>)',
+        lambda m: f'{m.group(1)}{re.sub(r"\b(width|height)\s*:\s*[^;]+;?\s*", "", m.group(2)).strip()}{m.group(3)}',
+        html_text,
+        flags=re.IGNORECASE,
+    )
+
+
 def _inline_images_in_html(html_text: str) -> str:
     """Replace all <img src=\"...\"> with base64 data URIs in HTML content."""
     pattern = re.compile(r'(<img\s[^>]*?src\s*=\s*")([^"]+)("[^>]*?>)', re.IGNORECASE)
@@ -127,7 +137,9 @@ def _inline_images_in_html(html_text: str) -> str:
         data_uri = _img_url_to_data_uri(src)
         return f"{prefix}{data_uri}{suffix}"
 
-    return pattern.sub(_replace, html_text)
+    html_text = pattern.sub(_replace, html_text)
+    html_text = _strip_img_style_width(html_text)
+    return html_text
 
 
 def _parse_json_field(value: str | dict | None) -> dict | None:
