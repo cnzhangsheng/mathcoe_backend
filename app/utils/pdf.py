@@ -116,14 +116,14 @@ def _img_url_to_data_uri(img_url: str) -> str:
     return data_uri
 
 
+_IMG_STYLE_STRIP_RE = re.compile(r'\b(width|height)\s*:\s*[^;]+;?\s*', re.IGNORECASE)
+
 def _strip_img_style_width(html_text: str) -> str:
     """Remove width & height from inline style on <img> tags to preserve natural size."""
-    return re.sub(
-        r'(<img\s[^>]*?style\s*=\s*")([^"]*)("[^>]*?>)',
-        lambda m: f'{m.group(1)}{re.sub(r"\b(width|height)\s*:\s*[^;]+;?\s*", "", m.group(2)).strip()}{m.group(3)}',
-        html_text,
-        flags=re.IGNORECASE,
-    )
+    _tag_re = re.compile(r'(<img\s[^>]*?style\s*=\s*")([^"]*)("[^>]*?>)', re.IGNORECASE)
+    def _clean(m):
+        return f'{m.group(1)}{_IMG_STYLE_STRIP_RE.sub("", m.group(2)).strip()}{m.group(3)}'
+    return _tag_re.sub(_clean, html_text)
 
 
 def _inline_images_in_html(html_text: str) -> str:
