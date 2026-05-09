@@ -38,7 +38,7 @@ echo ""
 
 # 使用 nohup 在后台运行，日志输出到 logs 目录
 mkdir -p logs
-nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &
+nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > logs/server.log 2>&1 &
 
 # 等待服务启动
 sleep 2

@@ -68,6 +68,62 @@
     padding: 4pt 0 4pt 20pt;
     margin-bottom: 2pt;
   }
+
+  /* Text-only options — evenly distributed across full line */
+  .options-inline {
+    list-style: none;
+    padding: 0;
+    margin: 8pt 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2pt;
+  }
+  .options-inline li {
+    padding: 2pt 4pt;
+  }
+  .options-inline li p,
+  .options-inline li div {
+    display: inline;
+    margin: 0;
+  }
+
+  /* Image options — responsive grid */
+  .options-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8pt;
+  }
+  .options-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6pt;
+  }
+  .options-grid-2,
+  .options-grid-3 {
+    list-style: none;
+    padding: 0;
+    margin: 8pt 0;
+  }
+  .options-grid-2 li,
+  .options-grid-3 li {
+    padding: 6pt;
+    border: 1px solid #eee;
+    border-radius: 4pt;
+    break-inside: avoid;
+  }
+  .options-grid-2 li p,
+  .options-grid-2 li div,
+  .options-grid-3 li p,
+  .options-grid-3 li div {
+    display: inline;
+    margin: 0;
+  }
+  .options-grid-2 li img,
+  .options-grid-3 li img {
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
+  }
   .option-key {
     display: inline-block;
     width: 20pt;
@@ -145,15 +201,30 @@
   {% endif %}
 
   {% if q.options %}
-  <ul class="options-list">
-    {% for opt in q.options %}
-    <li>
-      <span class="option-key">{{ opt.key }}</span>
-      <span>{{ opt.value|safe }}</span>
-      {% if opt.image %}<img src="{{ opt.image }}" alt="选项图片" style="max-width: 100%;">{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
+    {% if q.grid_cols == 0 %}
+    {# Text-only: inline layout #}
+    <ul class="options-inline">
+      {% for opt in q.options %}
+      <li>
+        <span class="option-key">{{ opt.key }}</span>
+        <span>{{ opt.value|safe }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {# Image options: grid layout #}
+    <ul class="options-grid-{{ q.grid_cols }}">
+      {% for opt in q.options %}
+      <li>
+        <span class="option-key">{{ opt.key }}</span>
+        <span>{{ opt.value|safe }}</span>
+        {% if opt.image_data %}
+        <img src="{{ opt.image_data.src }}" alt="选项图片">
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
   {% endif %}
 </div>
 {% endfor %}
