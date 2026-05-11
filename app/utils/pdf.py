@@ -237,13 +237,10 @@ def render_exam_paper_pdf(
                 "image_data": img_data,  # only set for separate image field
             })
 
-        # Determine grid columns based on max image width.
-        # 3 columns preferred; fall back to 2 for wide images.
-        # A4 content ~539pt; 3-col cell ~174pt, 2-col cell ~265pt.
+        # Determine grid columns for image options — always 3 columns.
+        # A4 content ~539pt; 3-col cell ~174pt fits most option images.
         if max_img_w == 0:
             grid_cols = 0  # text-only → inline layout
-        elif max_img_w > 350:
-            grid_cols = 2
         else:
             grid_cols = 3
 
