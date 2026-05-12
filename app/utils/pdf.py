@@ -142,6 +142,50 @@ def _inline_images_in_html(html_text: str) -> str:
     return html_text
 
 
+def _inline_content_images(html_text: str) -> str:
+    """Replace content <img> with data URIs + aspect-ratio-based max-width.
+
+    Landscape images (width > 1.5× height) get 95% page width.
+    Square/portrait images get 50% page width.
+    """
+    pattern = re.compile(r'(<img\s)([^>]*?)(>)', re.IGNORECASE)
+    _src_re = re.compile(r'src\s*=\s*"([^"]+)"', re.IGNORECASE)
+    _style_re = re.compile(r'style\s*=\s*"[^"]*"', re.IGNORECASE)
+    _width_re = re.compile(r'\bwidth\s*=\s*"[^"]*"', re.IGNORECASE)
+    _height_re = re.compile(r'\bheight\s*=\s*"[^"]*"', re.IGNORECASE)
+
+    def _replace(match):
+        attrs = match.group(2)
+        src_m = _src_re.search(attrs)
+        if not src_m:
+            return match.group(0)  # no src, leave as-is
+
+        src = src_m.group(1)
+        data_uri, w, h = _load_image(src)
+
+        # Strip existing style, width, height attributes
+        clean = _style_re.sub('', attrs)
+        clean = _width_re.sub('', clean)
+        clean = _height_re.sub('', clean)
+
+        # Determine max-width based on aspect ratio
+        if w and h:
+            if w > h * 3:
+                max_w = "95%"
+            elif w > h * 1.5:
+                max_w = "70%"
+            else:
+                max_w = "50%"
+        else:
+            max_w = "50%"
+
+        new_src = f'src="{data_uri}"'
+        new_style = f'style="max-width: {max_w}; height: auto;"'
+        return f'{match.group(1)}{new_src} {clean.strip()} {new_style}{match.group(3)}'
+
+    return pattern.sub(_replace, html_text)
+
+
 def _parse_json_field(value: str | dict | None) -> dict | None:
     """Parse a JSON field that might be a string or dict"""
     if value is None:
@@ -245,7 +289,7 @@ def render_exam_paper_pdf(
             grid_cols = 3
 
         processed.append({
-            "content_text": _inline_images_in_html((content or {}).get("text", "")),
+            "content_text": _inline_content_images((content or {}).get("text", "")),
             "content_images": content_images,
             "options": processed_options,
             "grid_cols": grid_cols,
