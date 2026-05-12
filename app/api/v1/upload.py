@@ -7,6 +7,8 @@ from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 
+from app.core.config import settings
+
 router = APIRouter()
 
 UPLOAD_DIR = "app/static/uploads"
@@ -28,8 +30,9 @@ async def upload_image(file: UploadFile = File(...)):
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # 返回访问URL
-    return {"url": f"/api/v1/static/uploads/{filename}", "filename": filename}
+    # 返回绝对URL
+    base = settings.server_host.rstrip("/")
+    return {"url": f"{base}/api/v1/static/uploads/{filename}", "filename": filename}
 
 
 @router.get("/static/uploads/{filename}")
