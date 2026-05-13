@@ -155,7 +155,7 @@ async def list_questions_admin(
         query = query.where(Question.difficulty_level == difficulty_level)
     if source_year:
         query = query.where(Question.source_year == source_year)
-    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(Question.id.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
