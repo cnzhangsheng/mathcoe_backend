@@ -79,25 +79,14 @@ def _img_bytes_to_data_uri(img_data: bytes, img_url: str) -> str:
     return f"data:{mime};base64,{base64.b64encode(img_data).decode()}"
 
 
-_IMG_CACHE: dict[str, tuple[str, int | None, int | None]] = {}
-
-
 def _load_image(img_url: str) -> tuple[str, int | None, int | None]:
-    """Return (data_uri, width, height) for an image URL.
-
-    Results are cached to avoid re-downloading the same URL.
-    """
-    if img_url in _IMG_CACHE:
-        return _IMG_CACHE[img_url]
+    """Return (data_uri, width, height) for an image URL."""
     data = _read_image_bytes(img_url)
     if data is None:
-        result = (img_url, None, None)
-    else:
-        data_uri = _img_bytes_to_data_uri(data, img_url)
-        w, h = _get_image_dimensions(data)
-        result = (data_uri, w, h)
-    _IMG_CACHE[img_url] = result
-    return result
+        return (img_url, None, None)
+    data_uri = _img_bytes_to_data_uri(data, img_url)
+    w, h = _get_image_dimensions(data)
+    return (data_uri, w, h)
 
 
 def _make_absolute_url(img_url: str) -> str:
