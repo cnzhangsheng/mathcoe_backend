@@ -148,14 +148,19 @@ def _inline_images_in_html(html_text: str) -> str:
 def _inline_content_images(html_text: str) -> str:
     """Replace content <img> with data URIs + aspect-ratio-based max-width.
 
-    Landscape images (width > 1.5× height) get 95% page width.
-    Square/portrait images get 50% page width.
+    If an img tag has explicit pixel dimensions (style="width: Xpx..." or width/height
+    attributes), those dimensions are preserved and only the src is replaced.
+    Otherwise, applies max-width based on aspect ratio:
+      - width > height × 3  → 95% (ultra-wide)
+      - width > height × 1.5 → 70% (wide)
+      - else → 50% (square/portrait)
     """
     pattern = re.compile(r'(<img\s)([^>]*?)(>)', re.IGNORECASE)
     _src_re = re.compile(r'src\s*=\s*"([^"]+)"', re.IGNORECASE)
     _style_re = re.compile(r'style\s*=\s*"[^"]*"', re.IGNORECASE)
     _width_re = re.compile(r'\bwidth\s*=\s*"[^"]*"', re.IGNORECASE)
     _height_re = re.compile(r'\bheight\s*=\s*"[^"]*"', re.IGNORECASE)
+    _px_style_re = re.compile(r'width\s*:\s*[\d.]+px', re.IGNORECASE)
 
     def _replace(match):
         attrs = match.group(2)
@@ -166,7 +171,18 @@ def _inline_content_images(html_text: str) -> str:
         src = src_m.group(1)
         data_uri, w, h = _load_image(src)
 
-        # Strip existing style, width, height attributes
+        # Check for explicit pixel dimensions (preserve them if found)
+        style_m = _style_re.search(attrs)
+        has_px_style = style_m and _px_style_re.search(style_m.group(0))
+        has_num_w_attr = _width_re.search(attrs) is not None
+
+        if has_px_style or has_num_w_attr:
+            # Preserve explicit dimensions, only update src to data URI
+            new_src = f'src="{data_uri}"'
+            rest = _src_re.sub(new_src, attrs)
+            return f'{match.group(1)}{rest}{match.group(3)}'
+
+        # No explicit dimensions — strip existing style/width/height attributes
         clean = _style_re.sub('', attrs)
         clean = _width_re.sub('', clean)
         clean = _height_re.sub('', clean)
