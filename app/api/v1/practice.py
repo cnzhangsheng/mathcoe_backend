@@ -1,10 +1,14 @@
 """
 Practice API router - practice sessions and records
 """
+import logging
+
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
 from app.api.deps import DBSession, CurrentUser
+
+logger = logging.getLogger(__name__)
 from app.models.user import User
 from app.schemas.practice import (
     PracticeStartRequest,
@@ -26,6 +30,7 @@ async def start_practice(request: PracticeStartRequest, db: DBSession, current_u
     user_result = await db.execute(select(User).where(User.id == current_user["id"]))
     user_info = user_result.scalar_one_or_none()
     level = user_info.difficulty_level if user_info else None
+    logger.info(f"开始练习: user_id={current_user['id']}, topic_id={request.topic_id}, mode={request.mode}, level={level}")
 
     service = PracticeService(db)
     return await service.start_practice(
@@ -41,13 +46,16 @@ async def start_practice(request: PracticeStartRequest, db: DBSession, current_u
 @router.post("/submit", response_model=PracticeSubmitResponse)
 async def submit_answer(request: PracticeSubmitRequest, db: DBSession, current_user: CurrentUser):
     """Submit answer"""
+    logger.info(f"提交答案: user_id={current_user['id']}, question_id={request.question_id}, answer={request.user_answer}")
     service = PracticeService(db)
-    return await service.submit_answer(
+    result = await service.submit_answer(
         user_id=current_user["id"],
         question_id=request.question_id,
         user_answer=request.user_answer,
         time_spent=request.time_spent,
     )
+    logger.info(f"提交答案结果: user_id={current_user['id']}, question_id={request.question_id}, correct={result.get('is_correct')}")
+    return result
 
 
 @router.get("/records", response_model=PracticeRecordResponse | PracticeRecordsPaginatedResponse)

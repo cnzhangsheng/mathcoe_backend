@@ -1,6 +1,7 @@
 """
 File upload API
 """
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 UPLOAD_DIR = "app/static/uploads"
@@ -32,7 +34,9 @@ async def upload_image(file: UploadFile = File(...)):
 
     # 返回绝对URL
     base = settings.server_host.rstrip("/")
-    return {"url": f"{base}/api/v1/static/uploads/{filename}", "filename": filename}
+    url = f"{base}/api/v1/static/uploads/{filename}"
+    logger.info(f"图片上传: filename={filename}, size={len(content)}bytes, url={url}")
+    return {"url": url, "filename": filename}
 
 
 @router.get("/static/uploads/{filename}")

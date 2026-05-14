@@ -1,6 +1,7 @@
 """
 Admin management API - 用户、专题、题目、考卷管理
 """
+import logging
 import os
 from urllib.parse import quote
 
@@ -24,6 +25,8 @@ from app.schemas.exam_paper import (
     ExamPaperQuestionCreate, ExamPaperQuestionUpdate, ExamPaperQuestionResponse
 )
 from app.utils.pdf import render_exam_paper_pdf_stream
+
+logger = logging.getLogger(__name__)
 
 PDF_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "storage", "exam_papers")
 os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
@@ -167,6 +170,7 @@ async def create_question(data: QuestionCreate, db: DBSession):
     db.add(question)
     await db.commit()
     await db.refresh(question)
+    logger.info(f"创建题目: id={question.id}, topic_id={data.topic_id}, difficulty={data.difficulty_level}, answer={data.answer}")
     return question
 
 
@@ -188,6 +192,7 @@ async def update_question(question_id: int, data: QuestionUpdate, db: DBSession)
         setattr(question, key, value)
     await db.commit()
     await db.refresh(question)
+    logger.info(f"更新题目: id={question_id}, fields={set(data.model_dump(exclude_unset=True).keys())}")
     return question
 
 
@@ -207,6 +212,7 @@ async def delete_question(question_id: int, db: DBSession):
         raise HTTPException(status_code=404, detail="题目不存在")
     await db.delete(question)
     await db.commit()
+    logger.info(f"删除题目: id={question_id}")
     return {"message": "删除成功"}
 
 
@@ -232,6 +238,7 @@ async def batch_delete_questions(ids: list[int], db: DBSession):
             deleted_count += 1
 
     await db.commit()
+    logger.info(f"批量删除题目: ids={ids}, deleted_count={deleted_count}")
     return {"message": f"成功删除 {deleted_count} 道题目", "deleted_count": deleted_count}
 
 
@@ -414,6 +421,7 @@ async def export_admin_exam_paper_pdf(exam_paper_id: int, db: DBSession):
     # 更新数据库 file_path
     exam_paper.file_path = pdf_path
     await db.commit()
+    logger.info(f"导出考卷PDF: exam_paper_id={exam_paper_id}, title={exam_paper.title}, questions={len(questions_data)}")
 
     # 返回 PDF 流
     pdf_stream.seek(0)

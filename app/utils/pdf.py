@@ -4,12 +4,15 @@ PDF generation utilities for exam paper export
 import base64
 import io
 import json
+import logging
 import os
 import re
 import struct
 from pathlib import Path
 from urllib.parse import urlparse
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
@@ -63,12 +66,18 @@ def _read_image_bytes(img_url: str) -> bytes | None:
         local_path = os.path.join(_STATIC_UPLOAD_DIR, filename)
         if os.path.exists(local_path):
             with open(local_path, "rb") as f:
-                return f.read()
+                data = f.read()
+            logger.debug(f"PDF图片: 本地读取成功 filename={filename}, size={len(data)}")
+            return data
+        logger.debug(f"PDF图片: 本地文件不存在 path={local_path}, 尝试HTTP")
     try:
         req = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.read()
-    except Exception:
+            data = resp.read()
+            logger.debug(f"PDF图片: HTTP读取成功 url={img_url[:60]}, size={len(data)}")
+            return data
+    except Exception as e:
+        logger.warning(f"PDF图片: HTTP读取失败 url={img_url[:60]}, error={e}")
         return None
 
 
@@ -83,9 +92,14 @@ def _load_image(img_url: str) -> tuple[str, int | None, int | None]:
     """Return (data_uri, width, height) for an image URL."""
     data = _read_image_bytes(img_url)
     if data is None:
+        logger.warning(f"PDF图片: 读取失败，使用原始URL url={img_url[:60]}")
         return (img_url, None, None)
     data_uri = _img_bytes_to_data_uri(data, img_url)
     w, h = _get_image_dimensions(data)
+    if w and h:
+        logger.debug(f"PDF图片: 尺寸解析成功 url={img_url[:60]}, w={w}, h={h}")
+    else:
+        logger.warning(f"PDF图片: 尺寸解析失败 url={img_url[:60]}")
     return (data_uri, w, h)
 
 
@@ -215,10 +229,14 @@ def render_exam_paper_pdf(
         - answer (str): correct answer key
     """
     processed = []
-    for q in questions:
+    logger.info(f"PDF生成: 开始处理 title={title}, questions={len(questions)}")
+    for i, q in enumerate(questions):
         content = _parse_json_field(q.get("content"))
         options_raw = _parse_json_list(q.get("options"))
         explanation = _parse_json_field(q.get("explanation"))
+
+        q_id = q.get("id", q.get("_id", i))
+        logger.debug(f"PDF题目[{i}]: id={q_id}, options_count={len(options_raw)}")
 
         # Process images in content
         content_images = []
@@ -277,6 +295,8 @@ def render_exam_paper_pdf(
         else:
             grid_cols = 3
 
+        logger.debug(f"PDF题目[{i}]: grid_cols={grid_cols}, max_img_w={max_img_w}")
+
         processed.append({
             "content_text": _inline_content_images((content or {}).get("text", "")),
             "content_images": content_images,
@@ -296,7 +316,10 @@ def render_exam_paper_pdf(
         questions=processed,
     )
 
+    logger.info(f"PDF生成: HTML渲染完成 title={title}, html_size={len(html)}")
+
     pdf_bytes = HTML(string=html).write_pdf()
+    logger.info(f"PDF生成: 完成 title={title}, pdf_size={len(pdf_bytes)}字节")
     return pdf_bytes
 
 
