@@ -305,6 +305,29 @@ class FavoriteRepository(BaseRepository[Favorite]):
         )
         return list(result.scalars().all())
 
+    async def get_by_user_with_question_paginated(self, user_id: int, page: int, page_size: int) -> tuple[list[Favorite], int]:
+        """Get paginated user favorites with question loaded. Returns (items, total)."""
+        # Total count
+        count_result = await self.session.execute(
+            select(func.count(Favorite.id)).where(Favorite.user_id == user_id)
+        )
+        total = count_result.scalar() or 0
+
+        # Paginated query
+        offset = (page - 1) * page_size
+        result = await self.session.execute(
+            select(Favorite)
+            .options(
+                selectinload(Favorite.question),
+                selectinload(Favorite.question).selectinload(Question.topic)
+            )
+            .where(Favorite.user_id == user_id)
+            .order_by(Favorite.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        return list(result.scalars().all()), total
+
     async def is_favorited(self, user_id: int, question_id: int) -> bool:
         """Check if question is favorited by user"""
         result = await self.session.execute(
@@ -357,6 +380,66 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
             .order_by(WrongQuestion.last_retry_at.desc(), WrongQuestion.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_by_user_with_question_paginated(self, user_id: int, page: int, page_size: int, mastered: bool = False) -> tuple[list[WrongQuestion], int]:
+        """Get paginated user wrong questions with question loaded. Returns (items, total)."""
+        base_where = [WrongQuestion.user_id == user_id, WrongQuestion.mastered == mastered]
+
+        # Total count
+        count_result = await self.session.execute(
+            select(func.count(WrongQuestion.id)).where(*base_where)
+        )
+        total = count_result.scalar() or 0
+
+        # Paginated query
+        offset = (page - 1) * page_size
+        result = await self.session.execute(
+            select(WrongQuestion)
+            .options(
+                selectinload(WrongQuestion.question),
+                selectinload(WrongQuestion.question).selectinload(Question.topic)
+            )
+            .where(*base_where)
+            .order_by(WrongQuestion.last_retry_at.desc(), WrongQuestion.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        return list(result.scalars().all()), total
+
+    async def get_by_user_with_question_paginated_filtered(
+        self, user_id: int, page: int, page_size: int,
+        topic_id: int | None = None, mastered: bool = False,
+    ) -> tuple[list[WrongQuestion], int]:
+        """Get paginated user wrong questions with optional topic_id filter. Returns (items, total)."""
+        from sqlalchemy import and_
+
+        base_where = [WrongQuestion.user_id == user_id, WrongQuestion.mastered == mastered]
+
+        # Count
+        count_query = select(func.count(WrongQuestion.id)).where(*base_where)
+        if topic_id:
+            count_query = count_query.join(WrongQuestion.question).where(Question.topic_id == topic_id)
+        count_result = await self.session.execute(count_query)
+        total = count_result.scalar() or 0
+
+        # Paginated data
+        offset = (page - 1) * page_size
+        query = (
+            select(WrongQuestion)
+            .options(
+                selectinload(WrongQuestion.question),
+                selectinload(WrongQuestion.question).selectinload(Question.topic)
+            )
+            .where(*base_where)
+            .order_by(WrongQuestion.last_retry_at.desc(), WrongQuestion.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        if topic_id:
+            query = query.join(WrongQuestion.question).where(Question.topic_id == topic_id)
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all()), total
 
     async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestion:
         """Add or update wrong question"""

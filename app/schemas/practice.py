@@ -139,3 +139,19 @@ class PracticeRecordsPaginatedResponse(BaseModel):
     page: int
     page_size: int
     stats: dict
+
+
+class WrongQuestionsPaginatedResponse(BaseModel):
+    """错题列表分页响应"""
+    items: list[WrongQuestionDetailResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class FavoritesPaginatedResponse(BaseModel):
+    """收藏列表分页响应"""
+    items: list[FavoriteDetailResponse]
+    total: int
+    page: int
+    page_size: int

@@ -25,6 +25,8 @@ from app.schemas.practice import (
     WrongQuestionResponse,
     WrongQuestionDetailResponse,
     FavoriteDetailResponse,
+    WrongQuestionsPaginatedResponse,
+    FavoritesPaginatedResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -225,6 +227,28 @@ class PracticeService:
             for f in favorites
         ]
 
+    async def get_favorites_paginated(self, user_id: int, page: int, page_size: int) -> FavoritesPaginatedResponse:
+        """Get paginated user favorites with full question info"""
+        favorites, total = await self.favorite_repo.get_by_user_with_question_paginated(user_id, page, page_size)
+        items = [
+            FavoriteDetailResponse(
+                id=f.id,
+                question_id=f.question_id,
+                question_title=f.question.title if f.question else None,
+                question_topic_id=f.question.topic_id if f.question else None,
+                question_topic_title=f.question.topic.title if f.question and f.question.topic else None,
+                question_content=f.question.content if f.question else None,
+                question_options=f.question.options if f.question else None,
+                question_answer=f.question.answer if f.question else None,
+                question_explanation=f.question.explanation if f.question else None,
+                question_difficulty_level=f.question.difficulty_level if f.question else None,
+                question_type=f.question.question_type if f.question else "single",
+                created_at=f.created_at,
+            )
+            for f in favorites
+        ]
+        return FavoritesPaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
     async def add_favorite(self, user_id: int, question_id: int) -> FavoriteResponse:
         """Add question to favorites"""
         from app.utils import short_id
@@ -263,12 +287,12 @@ class PracticeService:
         wrong_list = await self.wrong_repo.get_by_user_with_question(user_id)
         logger.info(f"错题列表获取完成: count={len(wrong_list)}")
 
-        result = []
-        for w in wrong_list:
-            # 获取最近一次错误答案
-            last_wrong_answer = await self._get_last_wrong_answer(self.session, user_id, w.question_id)
+        # Batch get last wrong answers
+        question_ids = [w.question_id for w in wrong_list]
+        last_answers = await self._batch_get_last_wrong_answers(user_id, question_ids)
 
-            result.append(WrongQuestionDetailResponse(
+        return [
+            WrongQuestionDetailResponse(
                 id=w.id,
                 question_id=w.question_id,
                 question_title=w.question.title if w.question else None,
@@ -279,12 +303,46 @@ class PracticeService:
                 question_answer=w.question.answer if w.question else None,
                 question_explanation=w.question.explanation if w.question else None,
                 question_difficulty_level=w.question.difficulty_level if w.question else None,
-                user_answer=last_wrong_answer,
+                user_answer=last_answers.get(w.question_id),
                 retry_count=w.retry_count,
                 mastered=w.mastered,
                 created_at=w.created_at,
-            ))
-        return result
+            )
+            for w in wrong_list
+        ]
+
+    async def get_wrong_questions_paginated(self, user_id: int, page: int, page_size: int, topic_id: int | None = None) -> WrongQuestionsPaginatedResponse:
+        """Get paginated user wrong questions with full question info and last wrong answer"""
+        logger.info(f"获取错题列表(分页): user_id={user_id}, page={page}, page_size={page_size}, topic_id={topic_id}")
+        wrong_list, total = await self.wrong_repo.get_by_user_with_question_paginated_filtered(
+            user_id, page, page_size, topic_id=topic_id
+        )
+        logger.info(f"错题列表获取完成: count={len(wrong_list)}, total={total}")
+
+        # Batch get last wrong answers
+        question_ids = [w.question_id for w in wrong_list]
+        last_answers = await self._batch_get_last_wrong_answers(user_id, question_ids)
+
+        items = [
+            WrongQuestionDetailResponse(
+                id=w.id,
+                question_id=w.question_id,
+                question_title=w.question.title if w.question else None,
+                question_topic_id=w.question.topic_id if w.question else None,
+                question_topic_title=w.question.topic.title if w.question and w.question.topic else None,
+                question_content=w.question.content if w.question else None,
+                question_options=w.question.options if w.question else None,
+                question_answer=w.question.answer if w.question else None,
+                question_explanation=w.question.explanation if w.question else None,
+                question_difficulty_level=w.question.difficulty_level if w.question else None,
+                user_answer=last_answers.get(w.question_id),
+                retry_count=w.retry_count,
+                mastered=w.mastered,
+                created_at=w.created_at,
+            )
+            for w in wrong_list
+        ]
+        return WrongQuestionsPaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
     async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestionResponse:
         """Add question to wrong questions list"""
@@ -311,6 +369,32 @@ class PracticeService:
         )
         record = result.scalar_one_or_none()
         return record.user_answer if record else None
+
+    async def _batch_get_last_wrong_answers(self, user_id: int, question_ids: list[int]) -> dict[int, str | None]:
+        """Batch get the last wrong answer for each question_id (single query, no N+1).
+
+        Returns dict mapping question_id -> last wrong answer (or None).
+        """
+        if not question_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(TestAnswerRecord.question_id, TestAnswerRecord.user_answer, TestAnswerRecord.created_at)
+            .where(TestAnswerRecord.user_id == user_id)
+            .where(TestAnswerRecord.question_id.in_(question_ids))
+            .where(TestAnswerRecord.is_correct == False)
+            .order_by(TestAnswerRecord.question_id, TestAnswerRecord.created_at.desc())
+        )
+        rows = result.all()
+
+        # Take the first (latest by created_at desc) for each question_id
+        seen = set()
+        answer_map: dict[int, str | None] = {}
+        for row in rows:
+            if row.question_id not in seen:
+                seen.add(row.question_id)
+                answer_map[row.question_id] = row.user_answer
+        return answer_map
 
     async def mark_wrong_mastered(self, user_id: int, question_id: int) -> bool:
         """Mark a wrong question as mastered"""

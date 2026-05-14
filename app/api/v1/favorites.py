@@ -2,24 +2,27 @@
 Favorites API router - favorites and wrong questions
 """
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.api.deps import DBSession, CurrentUser
-from app.schemas.practice import FavoriteRequest, FavoriteResponse, WrongQuestionResponse, WrongQuestionDetailResponse, FavoriteDetailResponse
+from app.schemas.practice import FavoriteRequest, FavoriteResponse, WrongQuestionResponse, WrongQuestionDetailResponse, FavoriteDetailResponse, WrongQuestionsPaginatedResponse, FavoritesPaginatedResponse
 from app.services.practice_service import PracticeService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("", response_model=list[FavoriteDetailResponse])
-async def get_favorites(db: DBSession, current_user: CurrentUser):
-    """Get user favorites with full question info"""
-    logger.info(f"获取收藏列表: user_id={current_user['id']}")
+@router.get("", response_model=FavoritesPaginatedResponse)
+async def get_favorites(
+    db: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+):
+    """Get user favorites with full question info (paginated)"""
+    logger.info(f"获取收藏列表: user_id={current_user['id']}, page={page}, page_size={page_size}")
     service = PracticeService(db)
-    favorites = await service.get_favorites(current_user["id"])
-    logger.info(f"收藏列表返回: count={len(favorites)}")
-    return favorites
+    return await service.get_favorites_paginated(current_user["id"], page, page_size)
 
 
 @router.post("", response_model=FavoriteResponse)
@@ -42,14 +45,18 @@ async def remove_favorite(request: FavoriteRequest, db: DBSession, current_user:
     return {"success": success}
 
 
-@router.get("/wrong", response_model=list[WrongQuestionDetailResponse])
-async def get_wrong_questions(db: DBSession, current_user: CurrentUser):
-    """Get user wrong questions with full question info"""
-    logger.info(f"获取错题列表: user_id={current_user['id']}")
+@router.get("/wrong", response_model=WrongQuestionsPaginatedResponse)
+async def get_wrong_questions(
+    db: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+    topic_id: int | None = Query(default=None),
+):
+    """Get user wrong questions with full question info (paginated)"""
+    logger.info(f"获取错题列表: user_id={current_user['id']}, page={page}, page_size={page_size}, topic_id={topic_id}")
     service = PracticeService(db)
-    wrong_questions = await service.get_wrong_questions(current_user["id"])
-    logger.info(f"错题列表返回: count={len(wrong_questions)}")
-    return wrong_questions
+    return await service.get_wrong_questions_paginated(current_user["id"], page, page_size, topic_id=topic_id)
 
 
 @router.post("/wrong", response_model=WrongQuestionResponse)
