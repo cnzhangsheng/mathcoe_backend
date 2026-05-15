@@ -3,7 +3,7 @@ ExamPaper API for miniapp - 用户端考卷接口
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import select, func, delete, insert, and_, Integer
@@ -374,15 +374,10 @@ async def list_exam_papers(
         if t.status == "completed":
             test_map[t.exam_paper_id] = (t.score, t.status)
 
-    # 计算"新考卷"阈值（7天内）
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-
     # 组装响应
     responses = []
     for paper in papers:
         test_info = test_map.get(paper.id)
-        # 动态计算 is_new：创建时间在7天内
-        is_new = paper.created_at and paper.created_at > seven_days_ago
         responses.append(ExamPaperResponse(
             id=paper.id,
             title=paper.title,
@@ -391,7 +386,7 @@ async def list_exam_papers(
             description=paper.description,
             paper_type=paper.paper_type,
             file_path=paper.file_path,
-            is_new=is_new or False,
+            is_new=paper.is_new,
             user_completed=test_info is not None,
             user_score=test_info[0] if test_info else None,
             created_at=paper.created_at,
