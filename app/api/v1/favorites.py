@@ -18,11 +18,12 @@ async def get_favorites(
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=200),
+    topic_id: int | None = Query(default=None),
 ):
     """Get user favorites with full question info (paginated)"""
-    logger.info(f"获取收藏列表: user_id={current_user['id']}, page={page}, page_size={page_size}")
+    logger.info(f"获取收藏列表: user_id={current_user['id']}, page={page}, page_size={page_size}, topic_id={topic_id}")
     service = PracticeService(db)
-    return await service.get_favorites_paginated(current_user["id"], page, page_size)
+    return await service.get_favorites_paginated(current_user["id"], page, page_size, topic_id=topic_id)
 
 
 @router.post("", response_model=FavoriteResponse)

@@ -328,6 +328,39 @@ class FavoriteRepository(BaseRepository[Favorite]):
         )
         return list(result.scalars().all()), total
 
+    async def get_by_user_with_question_paginated_filtered(
+        self, user_id: int, page: int, page_size: int,
+        topic_id: int | None = None,
+    ) -> tuple[list[Favorite], int]:
+        """Get paginated user favorites with optional topic_id filter. Returns (items, total)."""
+        base_where = [Favorite.user_id == user_id]
+
+        # Count
+        count_query = select(func.count(Favorite.id)).where(*base_where)
+        if topic_id:
+            count_query = count_query.join(Favorite.question).where(Question.topic_id == topic_id)
+        count_result = await self.session.execute(count_query)
+        total = count_result.scalar() or 0
+
+        # Paginated data
+        offset = (page - 1) * page_size
+        query = (
+            select(Favorite)
+            .options(
+                selectinload(Favorite.question),
+                selectinload(Favorite.question).selectinload(Question.topic)
+            )
+            .where(*base_where)
+            .order_by(Favorite.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        if topic_id:
+            query = query.join(Favorite.question).where(Question.topic_id == topic_id)
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all()), total
+
     async def is_favorited(self, user_id: int, question_id: int) -> bool:
         """Check if question is favorited by user"""
         result = await self.session.execute(

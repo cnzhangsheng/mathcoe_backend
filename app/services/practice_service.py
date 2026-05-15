@@ -227,9 +227,12 @@ class PracticeService:
             for f in favorites
         ]
 
-    async def get_favorites_paginated(self, user_id: int, page: int, page_size: int) -> FavoritesPaginatedResponse:
+    async def get_favorites_paginated(self, user_id: int, page: int, page_size: int, topic_id: int | None = None) -> FavoritesPaginatedResponse:
         """Get paginated user favorites with full question info"""
-        favorites, total = await self.favorite_repo.get_by_user_with_question_paginated(user_id, page, page_size)
+        if topic_id:
+            favorites, total = await self.favorite_repo.get_by_user_with_question_paginated_filtered(user_id, page, page_size, topic_id=topic_id)
+        else:
+            favorites, total = await self.favorite_repo.get_by_user_with_question_paginated(user_id, page, page_size)
         items = [
             FavoriteDetailResponse(
                 id=f.id,
