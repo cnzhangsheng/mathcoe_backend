@@ -33,6 +33,7 @@ class ExamPaperBase(BaseModel):
     total_questions: int = 10
     description: str | None = None
     paper_type: str = "daily"  # daily/mock/topic/past
+    status: str = "published"  # published/unpublished
 
 
 class ExamPaperCreate(ExamPaperBase):
@@ -45,6 +46,7 @@ class ExamPaperUpdate(BaseModel):
     total_questions: int | None = None
     description: str | None = None
     paper_type: str | None = None
+    status: str | None = None
 
 
 class ExamPaperResponse(BaseModel):
@@ -56,6 +58,7 @@ class ExamPaperResponse(BaseModel):
     paper_type: str
     is_new: bool = False
     file_path: str | None = None
+    status: str = "published"
     user_completed: bool = False
     user_score: int | None = None
     created_at: datetime | None

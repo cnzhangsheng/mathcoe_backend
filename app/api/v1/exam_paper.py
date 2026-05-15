@@ -332,7 +332,7 @@ async def list_exam_papers(
         return ExamPaperListResponse(total=0, page=page, page_size=page_size, items=[])
 
     # 构建查询条件
-    conditions = [ExamPaper.difficulty_level == user_info.difficulty_level]
+    conditions = [ExamPaper.difficulty_level == user_info.difficulty_level, ExamPaper.status == "published"]
     if paper_type:
         conditions.append(ExamPaper.paper_type == paper_type)
 
@@ -378,6 +378,8 @@ async def list_exam_papers(
     responses = []
     for paper in papers:
         test_info = test_map.get(paper.id)
+        is_new_val = bool(paper.is_new) if paper.is_new is not None else False
+        logger.info(f"Paper {paper.id}: DB is_new={paper.is_new!r}, computed={is_new_val}")
         responses.append(ExamPaperResponse(
             id=paper.id,
             title=paper.title,
@@ -386,7 +388,7 @@ async def list_exam_papers(
             description=paper.description,
             paper_type=paper.paper_type,
             file_path=paper.file_path,
-            is_new=paper.is_new,
+            is_new=is_new_val,
             user_completed=test_info is not None,
             user_score=test_info[0] if test_info else None,
             created_at=paper.created_at,
@@ -438,9 +440,10 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
             rate = s.correct / s.total
             weak_topics.append({"topic_id": s.topic_id, "rate": rate})
 
-    # 4. 查询符合条件的考卷（等级匹配 + 未完成）
+    # 4. 查询符合条件的考卷（已上架 + 等级匹配 + 未完成）
     papers_result = await db.execute(
         select(ExamPaper)
+        .where(ExamPaper.status == "published")
         .where(ExamPaper.difficulty_level == user_difficulty)
         .where(ExamPaper.id.not_in(completed_ids) if completed_ids else True)
         .order_by(ExamPaper.created_at.desc())
@@ -451,6 +454,7 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
         # 如果没有未完成的考卷，尝试获取所有等级最新考卷
         fallback_result = await db.execute(
             select(ExamPaper)
+            .where(ExamPaper.status == "published")
             .order_by(ExamPaper.created_at.desc())
             .limit(limit)
         )

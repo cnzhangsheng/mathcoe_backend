@@ -19,6 +19,7 @@ class ExamPaper(BaseModel):
     paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic/past
     is_new: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="published", nullable=False)  # published/unpublished
 
     # Relationships
     questions = relationship("ExamPaperQuestion", back_populates="exam_paper", lazy="selectin", order_by="ExamPaperQuestion.sort")
