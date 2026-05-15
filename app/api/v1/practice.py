@@ -54,7 +54,7 @@ async def submit_answer(request: PracticeSubmitRequest, db: DBSession, current_u
         user_answer=request.user_answer,
         time_spent=request.time_spent,
     )
-    logger.info(f"提交答案结果: user_id={current_user['id']}, question_id={request.question_id}, correct={result.get('is_correct')}")
+    logger.info(f"提交答案结果: user_id={current_user['id']}, question_id={request.question_id}, correct={result.is_correct}")
     return result
 
 
