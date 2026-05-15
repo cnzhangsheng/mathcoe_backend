@@ -17,7 +17,7 @@ async def get_favorites(
     db: DBSession,
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=50),
+    page_size: int = Query(default=10, ge=1, le=200),
 ):
     """Get user favorites with full question info (paginated)"""
     logger.info(f"获取收藏列表: user_id={current_user['id']}, page={page}, page_size={page_size}")
@@ -50,7 +50,7 @@ async def get_wrong_questions(
     db: DBSession,
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=50),
+    page_size: int = Query(default=10, ge=1, le=200),
     topic_id: int | None = Query(default=None),
 ):
     """Get user wrong questions with full question info (paginated)"""
