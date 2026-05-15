@@ -174,6 +174,14 @@ class ExamPaperTestReport(BaseModel):
     answer_sheet: list[AnswerSheetItem] = []
 
 
+class ExamPaperListResponse(BaseModel):
+    """考卷列表（分页）"""
+    total: int
+    page: int
+    page_size: int
+    items: list[ExamPaperResponse]
+
+
 class ExamPaperTestList(BaseModel):
     """测试记录列表"""
     total: int

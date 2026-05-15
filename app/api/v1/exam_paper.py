@@ -3,10 +3,9 @@ ExamPaper API for miniapp - 用户端考卷接口
 """
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import select, func, delete, insert, and_, Integer
 from sqlalchemy.orm import selectinload
 
@@ -20,13 +19,12 @@ from app.models.favorite import WrongQuestion
 from app.models.practice_record import PracticeRecord
 from app.models.user import User
 from app.schemas.exam_paper import (
-    ExamPaperResponse, ExamPaperWithQuestions,
+    ExamPaperResponse, ExamPaperWithQuestions, ExamPaperListResponse,
     ExamPaperTestStart, ExamPaperTestAnswer, ExamPaperTestSubmit,
     ExamPaperTestResponse, ExamPaperTestDetail, ExamPaperTestList,
     ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport
 )
 from app.utils.id_generator import short_id
-from urllib.parse import quote
 
 from app.utils.pdf import render_exam_paper_pdf_stream
 
@@ -318,24 +316,45 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
 
 # ============ 考卷基础接口 ============
 
-@router.get("", response_model=list[ExamPaperResponse])
-async def list_exam_papers(db: DBSession, user: CurrentUser):
-    """获取考卷列表，按用户难度等级过滤，附带用户作答状态"""
+@router.get("", response_model=ExamPaperListResponse)
+async def list_exam_papers(
+    db: DBSession,
+    user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    paper_type: str | None = Query(default=None),
+):
+    """获取考卷列表（分页，支持按类型筛选），附带用户作答状态"""
     # 获取用户难度等级
     user_result = await db.execute(select(User).where(User.id == user["id"]))
     user_info = user_result.scalar_one_or_none()
     if not user_info:
-        return []
+        return ExamPaperListResponse(total=0, page=page, page_size=page_size, items=[])
 
+    # 构建查询条件
+    conditions = [ExamPaper.difficulty_level == user_info.difficulty_level]
+    if paper_type:
+        conditions.append(ExamPaper.paper_type == paper_type)
+
+    # 查询总数
+    count_result = await db.execute(
+        select(func.count()).select_from(ExamPaper).where(and_(*conditions))
+    )
+    total = count_result.scalar() or 0
+
+    # 分页查询
+    offset = (page - 1) * page_size
     result = await db.execute(
         select(ExamPaper)
-        .where(ExamPaper.difficulty_level == user_info.difficulty_level)
+        .where(and_(*conditions))
         .order_by(ExamPaper.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
     )
     papers = list(result.scalars().all())
 
     if not papers:
-        return []
+        return ExamPaperListResponse(total=total, page=page, page_size=page_size, items=[])
 
     # 查询用户对这些考卷的测试记录
     paper_ids = [p.id for p in papers]
@@ -349,17 +368,21 @@ async def list_exam_papers(db: DBSession, user: CurrentUser):
     # 构建 paper_id -> 测试记录 的映射
     test_map: dict[int, tuple[int | None, str]] = {}
     for t in user_tests:
-        # 如果同一考卷有多条记录，取最新（score 最高的）已完成记录
         existing = test_map.get(t.exam_paper_id)
         if existing and existing[1] == "completed":
             continue
         if t.status == "completed":
             test_map[t.exam_paper_id] = (t.score, t.status)
 
+    # 计算"新考卷"阈值（7天内）
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
     # 组装响应
     responses = []
     for paper in papers:
         test_info = test_map.get(paper.id)
+        # 动态计算 is_new：创建时间在7天内
+        is_new = paper.created_at and paper.created_at > seven_days_ago
         responses.append(ExamPaperResponse(
             id=paper.id,
             title=paper.title,
@@ -368,14 +391,14 @@ async def list_exam_papers(db: DBSession, user: CurrentUser):
             description=paper.description,
             paper_type=paper.paper_type,
             file_path=paper.file_path,
-            is_new=paper.is_new,
+            is_new=is_new or False,
             user_completed=test_info is not None,
             user_score=test_info[0] if test_info else None,
             created_at=paper.created_at,
             updated_at=paper.updated_at,
         ))
 
-    return responses
+    return ExamPaperListResponse(total=total, page=page, page_size=page_size, items=responses)
 
 
 @router.get("/recommended", response_model=list[ExamPaperResponse])
