@@ -48,9 +48,8 @@ class UserUpdate(BaseModel):
     def validate_daily_goal(cls, v: int | None) -> int | None:
         if v is None:
             return v
-        valid_goals = {5, 10, 15, 20}
-        if v not in valid_goals:
-            raise ValueError(f'daily_goal must be one of {valid_goals}')
+        if v <= 0:
+            raise ValueError('daily_goal must be positive')
         return v
 
 
