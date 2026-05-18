@@ -55,7 +55,10 @@ async def upload_image(
 @router.get("/static/{full_path:path}")
 async def get_uploaded_file(full_path: str):
     """获取上传的文件"""
-    filepath = os.path.join("app/static", full_path)
+    allowed_dir = os.path.realpath("app/static")
+    filepath = os.path.realpath(os.path.join(allowed_dir, full_path))
+    if not filepath.startswith(allowed_dir):
+        raise HTTPException(status_code=400, detail="非法路径")
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(filepath)

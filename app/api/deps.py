@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnauthorizedException
@@ -58,7 +59,32 @@ async def get_current_user_optional_token(
     return {"id": int(user_id), "openid": payload.get("openid")}
 
 
+async def get_current_admin(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Get current admin from JWT token (via Authorization header)"""
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    if payload is None:
+        raise UnauthorizedException()
+
+    admin_id = payload.get("admin_id")
+    if admin_id is None:
+        raise UnauthorizedException()
+
+    # 验证管理员存在
+    from app.models.admin import Admin as AdminModel
+    result = await db.execute(select(AdminModel).where(AdminModel.id == admin_id))
+    admin = result.scalar_one_or_none()
+    if not admin:
+        raise UnauthorizedException()
+
+    return {"admin_id": admin.id, "username": admin.username, "role": admin.role}
+
+
 # Type aliases for dependency injection
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 CurrentUserOptional = Annotated[dict, Depends(get_current_user_optional_token)]
+AdminUser = Annotated[dict, Depends(get_current_admin)]

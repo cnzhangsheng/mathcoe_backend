@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DBSession
+from app.api.deps import DBSession, AdminUser
 from app.models.banner import Banner
 from app.schemas.banner import BannerCreate, BannerUpdate, BannerResponse, BannerPublic
 
@@ -21,6 +21,7 @@ router = APIRouter(tags=["banner"])
 @router.get("/admin/banners", response_model=list[BannerResponse])
 async def list_banners(
     db: DBSession,
+    admin: AdminUser,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
 ):
@@ -33,7 +34,7 @@ async def list_banners(
 
 
 @router.get("/admin/banners/{banner_id}", response_model=BannerResponse)
-async def get_banner(banner_id: int, db: DBSession):
+async def get_banner(banner_id: int, db: DBSession, admin: AdminUser):
     """获取 Banner 详情"""
     result = await db.execute(select(Banner).where(Banner.id == banner_id))
     banner = result.scalar_one_or_none()
@@ -43,7 +44,7 @@ async def get_banner(banner_id: int, db: DBSession):
 
 
 @router.post("/admin/banners", response_model=BannerResponse)
-async def create_banner(data: BannerCreate, db: DBSession):
+async def create_banner(data: BannerCreate, db: DBSession, admin: AdminUser):
     """创建 Banner"""
     banner = Banner(
         image_url=data.image_url,
@@ -62,7 +63,7 @@ async def create_banner(data: BannerCreate, db: DBSession):
 
 
 @router.put("/admin/banners/{banner_id}", response_model=BannerResponse)
-async def update_banner(banner_id: int, data: BannerUpdate, db: DBSession):
+async def update_banner(banner_id: int, data: BannerUpdate, db: DBSession, admin: AdminUser):
     """更新 Banner"""
     result = await db.execute(select(Banner).where(Banner.id == banner_id))
     banner = result.scalar_one_or_none()
@@ -79,7 +80,7 @@ async def update_banner(banner_id: int, data: BannerUpdate, db: DBSession):
 
 
 @router.delete("/admin/banners/{banner_id}")
-async def delete_banner(banner_id: int, db: DBSession):
+async def delete_banner(banner_id: int, db: DBSession, admin: AdminUser):
     """删除 Banner"""
     result = await db.execute(select(Banner).where(Banner.id == banner_id))
     banner = result.scalar_one_or_none()

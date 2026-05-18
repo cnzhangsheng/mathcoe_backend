@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DBSession
+from app.api.deps import DBSession, AdminUser
 from app.models.content import Content
 from app.schemas.content import ContentCreate, ContentUpdate, ContentResponse, ContentDetail
 from app.utils.content import enhance_content_html
@@ -22,6 +22,7 @@ router = APIRouter(tags=["content"])
 @router.get("/admin/contents", response_model=list[ContentResponse])
 async def list_contents(
     db: DBSession,
+    admin: AdminUser,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     status: str | None = None,
@@ -37,7 +38,7 @@ async def list_contents(
 
 
 @router.get("/admin/contents/count")
-async def count_contents(db: DBSession, status: str | None = None):
+async def count_contents(db: DBSession, admin: AdminUser, status: str | None = None):
     """获取内容总数"""
     query = select(func.count(Content.id))
     if status:
@@ -47,7 +48,7 @@ async def count_contents(db: DBSession, status: str | None = None):
 
 
 @router.get("/admin/contents/{content_id}", response_model=ContentResponse)
-async def get_content(content_id: int, db: DBSession):
+async def get_content(content_id: int, db: DBSession, admin: AdminUser):
     """获取内容详情"""
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
@@ -57,7 +58,7 @@ async def get_content(content_id: int, db: DBSession):
 
 
 @router.post("/admin/contents", response_model=ContentResponse)
-async def create_content(data: ContentCreate, db: DBSession):
+async def create_content(data: ContentCreate, db: DBSession, admin: AdminUser):
     """创建内容"""
     content = Content(
         title=data.title,
@@ -80,7 +81,7 @@ async def create_content(data: ContentCreate, db: DBSession):
 
 
 @router.put("/admin/contents/{content_id}", response_model=ContentResponse)
-async def update_content(content_id: int, data: ContentUpdate, db: DBSession):
+async def update_content(content_id: int, data: ContentUpdate, db: DBSession, admin: AdminUser):
     """更新内容"""
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
@@ -97,7 +98,7 @@ async def update_content(content_id: int, data: ContentUpdate, db: DBSession):
 
 
 @router.delete("/admin/contents/{content_id}")
-async def delete_content(content_id: int, db: DBSession):
+async def delete_content(content_id: int, db: DBSession, admin: AdminUser):
     """删除内容"""
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
