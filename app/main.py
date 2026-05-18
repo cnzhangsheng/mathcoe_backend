@@ -11,8 +11,14 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from sqlalchemy import select
+from fastapi.responses import HTMLResponse
+
+from app.api.deps import DBSession
 from app.api.v1.router import router as api_router
 from app.core.config import settings
+from app.models.content import Content
+from app.utils.content import enhance_content_html
 
 
 # 配置日志 - 在 worker 进程中也生效
@@ -136,3 +142,47 @@ async def general_exception_handler(request: Request, exc: Exception):
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok", "version": settings.app_version}
+
+
+@app.get("/content/{slug}")
+async def render_content_page(slug: str, db: DBSession):
+    """外部浏览器访问：渲染已发布的内容为完整 HTML 页面"""
+    result = await db.execute(
+        select(Content).where(Content.slug == slug, Content.status == "published")
+    )
+    content = result.scalar_one_or_none()
+
+    if not content:
+        return HTMLResponse("<h1>404 - 内容不存在</h1>", status_code=404)
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{content.title} - 袋鼠数学助理</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f8f8; color: #333; line-height: 1.8; }}
+.container {{ max-width: 800px; margin: 0 auto; padding: 40px 32px; }}
+.header {{ margin-bottom: 32px; }}
+.header h1 {{ font-size: 28px; color: #333; }}
+.meta {{ font-size: 14px; color: #999; margin-top: 8px; }}
+.content {{ font-size: 16px; color: #444; }}
+.content p {{ margin-bottom: 16px; }}
+.content img {{ max-width: 100%; height: auto; border-radius: 8px; }}
+.footer {{ margin-top: 48px; padding-top: 24px; border-top: 1px solid #eee; text-align: center; font-size: 13px; color: #999; }}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1>{content.title}</h1>
+<div class="meta">更新时间：{content.updated_at.strftime('%Y-%m-%d %H:%M')}</div>
+</div>
+<div class="content">{enhance_content_html(content.content)}</div>
+<div class="footer">由 袋鼠数学助理 提供</div>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)

@@ -325,6 +325,37 @@ CREATE TABLE `wrong_questions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户错题记录表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+-- contents 表
+DROP TABLE IF EXISTS `contents`;
+CREATE TABLE `contents` (
+    `id` BIGINT NOT NULL,
+    `title` VARCHAR(255) NOT NULL,
+    `content` TEXT NOT NULL,
+    `slug` VARCHAR(128) NOT NULL,
+    `status` VARCHAR(16) NOT NULL DEFAULT 'draft',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY uk_contents_slug (`slug`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='内容表';
+
+-- banners 表
+DROP TABLE IF EXISTS `banners`;
+CREATE TABLE IF NOT EXISTS `banners` (
+    `id` BIGINT NOT NULL,
+    `image_url` VARCHAR(512) NOT NULL,
+    `link_type` VARCHAR(16) NOT NULL DEFAULT 'content',
+    `link_value` VARCHAR(512) NOT NULL DEFAULT '',
+    `title` VARCHAR(255) NOT NULL DEFAULT '',
+    `position` VARCHAR(32) NOT NULL DEFAULT 'home',
+    `sort_order` INT NOT NULL DEFAULT 0,
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Banner表';
+
+
 --
 -- Dumping routines for database 'mathcoe_db'
 --

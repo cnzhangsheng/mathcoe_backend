@@ -12,6 +12,8 @@ from app.models.exam_paper_test_answer import TestAnswerRecord
 from app.models.practice_record import PracticeRecord
 from app.models.favorite import Favorite, WrongQuestion
 from app.models.like import Like
+from app.models.content import Content
+from app.models.banner import Banner
 
 __all__ = [
     "Base",
@@ -28,4 +30,6 @@ __all__ = [
     "Favorite",
     "WrongQuestion",
     "Like",
+    "Content",
+    "Banner",
 ]
