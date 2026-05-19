@@ -142,6 +142,8 @@ CREATE TABLE `exam_papers` (
   `description` text COLLATE utf8mb4_unicode_ci,
   `paper_type` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'daily',
   `is_new` tinyint(1) NOT NULL DEFAULT '0',
+  `user_id` bigint NOT NULL,
+  `generation_config` json NULL,
   `file_path` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'unpublished' COMMENT '试卷上架状态',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

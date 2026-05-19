@@ -90,14 +90,14 @@ INSERT INTO mathcoe_db.questions (id,topic_id,title,content,question_type,`optio
 
 UPDATE mathcoe_db.questions set status='published';
 
-INSERT INTO mathcoe_db.exam_papers (id,title,difficulty_level,total_questions,description,paper_type,is_new,file_path,created_at,updated_at,status) VALUES
-	 (174293389312,'2020年 袋鼠数学（Level 1）',1,24,'','past',0,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293389312.pdf','2026-05-08 20:01:37','2026-05-15 16:48:26','published'),
-	 (174293540864,'2021年 袋鼠数学（Level 1）',1,24,'','past',0,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293540864.pdf','2026-05-08 20:02:14','2026-05-13 18:32:51','published'),
-	 (174293590016,'2022年 袋鼠数学（Level 1）',1,24,'','past',0,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293590016.pdf','2026-05-08 20:02:26','2026-05-14 15:03:05','published'),
-	 (174293635072,'2023年 袋鼠数学（Level 1）',1,24,'','past',0,NULL,'2026-05-08 20:02:37','2026-05-08 20:02:37','published'),
-	 (174293676032,'2024年 袋鼠数学（Level 1）',1,24,'','past',0,NULL,'2026-05-08 20:02:47','2026-05-08 20:02:47','published'),
-	 (174294016000,'2025年 袋鼠数学（Level 1）',1,24,'','past',0,NULL,'2026-05-08 20:04:10','2026-05-15 15:16:44','published'),
-	 (176702144512,'2026年 每月数学测评（4月卷）',1,24,'','daily',0,NULL,'2026-05-15 15:22:52','2026-05-15 15:22:52','published');
+INSERT INTO mathcoe_db.exam_papers (id,title,difficulty_level,total_questions,description,paper_type,is_new,user_id,file_path,created_at,updated_at,status) VALUES
+	 (174293389312,'2020年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293389312.pdf','2026-05-08 20:01:37','2026-05-15 16:48:26','published'),
+	 (174293540864,'2021年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293540864.pdf','2026-05-08 20:02:14','2026-05-13 18:32:51','published'),
+	 (174293590016,'2022年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,'/root/math_prod/mathcoe_backend/storage/exam_papers/174293590016.pdf','2026-05-08 20:02:26','2026-05-14 15:03:05','published'),
+	 (174293635072,'2023年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,NULL,'2026-05-08 20:02:37','2026-05-08 20:02:37','published'),
+	 (174293676032,'2024年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,NULL,'2026-05-08 20:02:47','2026-05-08 20:02:47','published'),
+	 (174294016000,'2025年 袋鼠数学（Level 1）',1,24,'','past',0,100000000000,NULL,'2026-05-08 20:04:10','2026-05-15 15:16:44','published'),
+	 (176702144512,'2026年 每月数学测评（4月卷）',1,24,'','daily',0,100000000000,NULL,'2026-05-15 15:22:52','2026-05-15 15:22:52','published');
 
 INSERT INTO mathcoe_db.exam_paper_questions (id,exam_paper_id,question_id,sort,created_at,updated_at) VALUES
 	 (174298046464,174293389312,174297862144,1,'2026-05-08 20:20:34','2026-05-08 20:20:34'),
