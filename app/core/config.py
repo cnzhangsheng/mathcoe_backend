@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = True
     server_host: str = "http://127.0.0.1:8000"
-    pdf_output_dir: str = "pdf_output"
+    pdf_output_dir: str = "storage/exam_custom_papers"
 
     @property
     def database_url(self) -> str:

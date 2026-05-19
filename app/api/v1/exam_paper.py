@@ -833,14 +833,14 @@ async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
 
     # 保存到文件
     os.makedirs(settings.pdf_output_dir, exist_ok=True)
-    filename = f"paper_{exam_paper_id}_{short_id()}.pdf"
+    filename = f"paper_{exam_paper_id}.pdf"
     file_path = os.path.join(settings.pdf_output_dir, filename)
     pdf_bytes = b"".join(pdf_stream)
     with open(file_path, "wb") as f:
         f.write(pdf_bytes)
 
     exam_paper.file_path = file_path
-    await db.flush()
+    await db.commit()
 
     return GeneratePdfResponse(exam_paper_id=exam_paper.id, file_path=file_path)
 
