@@ -362,6 +362,7 @@ async def list_exam_papers(
 async def create_exam_paper(data: ExamPaperCreate, db: DBSession):
     """创建考卷"""
     exam_paper = ExamPaper(**data.model_dump())
+    exam_paper.user_id = 100000000000
     db.add(exam_paper)
     await db.commit()
     await db.refresh(exam_paper)

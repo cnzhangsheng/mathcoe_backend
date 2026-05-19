@@ -230,7 +230,7 @@ DROP TABLE IF EXISTS `questions`;
 CREATE TABLE `questions` (
   `id` bigint NOT NULL,
   `topic_id` bigint DEFAULT NULL,
-  `title` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `title` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
   `content` json DEFAULT NULL,
   `question_type` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'single',
   `options` json DEFAULT NULL,
@@ -239,7 +239,7 @@ CREATE TABLE `questions` (
   `difficulty_level` int DEFAULT NULL,
   `source_year` int DEFAULT NULL,
   `tags` json DEFAULT (_utf8mb4'[]'),
-  `status` VARCHAR(16) NOT NULL DEFAULT 'unpublished';
+  `status` VARCHAR(16) NOT NULL DEFAULT 'unpublished',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

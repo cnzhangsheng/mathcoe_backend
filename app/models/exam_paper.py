@@ -1,7 +1,7 @@
 """
 ExamPaper model - 考卷
 """
-from sqlalchemy import BigInteger, Boolean, Integer, String, Text, ForeignKey
+from sqlalchemy import BigInteger, Boolean, Integer, String, Text, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -19,6 +19,8 @@ class ExamPaper(BaseModel):
     paper_type: Mapped[str] = mapped_column(String(16), default="daily", nullable=False)  # daily/mock/topic/past
     is_new: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=None)
+    generation_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     status: Mapped[str] = mapped_column(String(16), default="published", nullable=False)  # published/unpublished
 
     # Relationships

@@ -3,6 +3,7 @@ ExamPaper API for miniapp - 用户端考卷接口
 """
 import logging
 import os
+import random
 from datetime import datetime
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -23,7 +24,9 @@ from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperWithQuestions, ExamPaperListResponse,
     ExamPaperTestStart, ExamPaperTestAnswer, ExamPaperTestSubmit,
     ExamPaperTestResponse, ExamPaperTestDetail, ExamPaperTestList,
-    ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport
+    ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport,
+    GeneratePaperRequest, GeneratePaperResponse,
+    GeneratePdfResponse, DeletePaperResponse,
 )
 from app.utils.id_generator import short_id
 
@@ -333,7 +336,11 @@ async def list_exam_papers(
         return ExamPaperListResponse(total=0, page=page, page_size=page_size, items=[])
 
     # 构建查询条件
-    conditions = [ExamPaper.difficulty_level == user_info.difficulty_level, ExamPaper.status == "published"]
+    conditions = [
+        ExamPaper.difficulty_level == user_info.difficulty_level,
+        ExamPaper.status == "published",
+        ExamPaper.user_id == 100000000000,
+    ]
     if paper_type:
         conditions.append(ExamPaper.paper_type == paper_type)
 
@@ -524,6 +531,169 @@ async def get_recommended_papers(db: DBSession, user: CurrentUser, limit: int = 
     ]
 
 
+@router.post("/generate", response_model=GeneratePaperResponse)
+async def generate_exam_paper(req: GeneratePaperRequest, db: DBSession, user: CurrentUser):
+    """用户生成考卷"""
+    # 1. 确定专题列表
+    topic_ids = []
+
+    if req.mode == "smart":
+        # 智能模式：分析用户薄弱专题
+        stats_result = await db.execute(
+            select(
+                Question.topic_id,
+                func.count(PracticeRecord.id).label("total"),
+                func.sum(func.cast(PracticeRecord.is_correct, Integer)).label("correct")
+            )
+            .join(Question, PracticeRecord.question_id == Question.id)
+            .where(PracticeRecord.user_id == user["id"])
+            .group_by(Question.topic_id)
+            .order_by(
+                func.sum(func.cast(PracticeRecord.is_correct, Integer)) / func.count(PracticeRecord.id)
+            )
+        )
+        stats = stats_result.all()
+
+        if stats:
+            # 取正确率最低的 3 个专题
+            for s in stats[:3]:
+                topic_ids.append(s.topic_id)
+        else:
+            # 新用户：随机取有题目的专题
+            topics_result = await db.execute(
+                select(Question.topic_id)
+                .where(Question.status == "published")
+                .distinct()
+                .limit(3)
+            )
+            topic_ids = [t for t in topics_result.scalars().all()]
+    else:
+        # 手动模式
+        if not req.topic_ids:
+            raise HTTPException(status_code=400, detail="手动模式请选择专题")
+        topic_ids = req.topic_ids
+
+    # 确定标题（用户自定义优先）
+    if req.title:
+        title = req.title.strip()
+    elif req.mode == "smart":
+        title = "智能推荐卷"
+    else:
+        first_topic = await db.execute(select(Topic.title).where(Topic.id == topic_ids[0]))
+        first_title = first_topic.scalar_one_or_none() or ""
+        suffix = f"+等" if len(topic_ids) > 1 else ""
+        title = f"自定义卷 - {first_title}{suffix}"
+
+    if not topic_ids:
+        raise HTTPException(status_code=400, detail="没有可用的专题")
+
+    # 2. 查询符合条件的题目
+    questions_query = select(Question.id).where(
+        Question.status == "published",
+        Question.difficulty_level == req.difficulty_level,
+        Question.topic_id.in_(topic_ids)
+    )
+    questions_result = await db.execute(questions_query)
+    all_question_ids = list(questions_result.scalars().all())
+
+    if not all_question_ids:
+        raise HTTPException(status_code=400, detail="没有符合条件的题目")
+
+    # 3. 随机选取
+    random.shuffle(all_question_ids)
+    selected_ids = all_question_ids[:min(req.question_count, len(all_question_ids))]
+
+    # 4. 创建 ExamPaper
+    paper = ExamPaper(
+        title=title,
+        difficulty_level=req.difficulty_level,
+        total_questions=len(selected_ids),
+        paper_type="custom",
+        status="published",
+        user_id=user["id"],
+        generation_config={
+            "mode": req.mode,
+            "topic_ids": topic_ids,
+            "difficulty_level": req.difficulty_level,
+            "question_count": req.question_count,
+        }
+    )
+    db.add(paper)
+    await db.flush()
+
+    # 5. 创建 ExamPaperQuestion 关联
+    for i, qid in enumerate(selected_ids, 1):
+        db.add(ExamPaperQuestion(
+            exam_paper_id=paper.id,
+            question_id=qid,
+            sort=i
+        ))
+
+    await db.commit()
+    await db.refresh(paper)
+
+    return GeneratePaperResponse(
+        exam_paper_id=paper.id,
+        title=paper.title,
+        total_questions=paper.total_questions
+    )
+
+
+@router.get("/my", response_model=ExamPaperListResponse)
+async def get_my_papers(
+    db: DBSession,
+    user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+):
+    """获取用户生成的考卷列表"""
+    conditions = [ExamPaper.user_id == user["id"]]
+
+    count_result = await db.execute(
+        select(func.count()).select_from(ExamPaper).where(and_(*conditions))
+    )
+    total = count_result.scalar() or 0
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(ExamPaper)
+        .where(and_(*conditions))
+        .order_by(ExamPaper.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    papers = list(result.scalars().all())
+
+    # 查询用户对这些考卷的测试记录
+    paper_ids = [p.id for p in papers]
+    test_map = {}
+    if paper_ids:
+        tests_result = await db.execute(
+            select(ExamPaperTest.exam_paper_id, ExamPaperTest.score, ExamPaperTest.status)
+            .where(ExamPaperTest.user_id == user["id"])
+            .where(ExamPaperTest.exam_paper_id.in_(paper_ids))
+        )
+        for t in tests_result.all():
+            if t.exam_paper_id not in test_map and t.status == "completed":
+                test_map[t.exam_paper_id] = (t.score, t.status)
+
+    items = [
+        ExamPaperResponse(
+            id=p.id, title=p.title, difficulty_level=p.difficulty_level,
+            total_questions=p.total_questions, description=p.description,
+            paper_type=p.paper_type, file_path=p.file_path,
+            is_new=False, status=p.status,
+            user_id=p.user_id, generation_config=p.generation_config,
+            user_completed=p.id in test_map,
+            user_score=test_map[p.id][0] if p.id in test_map else None,
+            created_at=p.created_at, updated_at=p.updated_at,
+        )
+        for p in papers
+    ]
+
+    return ExamPaperListResponse(total=total, page=page, page_size=page_size, items=items)
+
+
 @router.get("/{exam_paper_id}", response_model=ExamPaperWithQuestions)
 async def get_exam_paper(exam_paper_id: int, db: DBSession):
     """获取考卷详情（包含题目列表）"""
@@ -601,7 +771,7 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
         raise HTTPException(status_code=404, detail="考卷不存在")
 
     if not exam_paper.file_path or not os.path.exists(exam_paper.file_path):
-        raise HTTPException(status_code=404, detail="PDF 文件不存在，请先在管理后台生成 PDF")
+        raise HTTPException(status_code=404, detail="PDF 文件不存在，请先生成 PDF")
 
     filename = quote(f"{exam_paper.title}.pdf")
     return StreamingResponse(
@@ -609,6 +779,110 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
     )
+
+
+@router.post("/{exam_paper_id}/generate-pdf", response_model=GeneratePdfResponse)
+async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUser):
+    """生成考卷 PDF 并保存到文件"""
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+    if exam_paper.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="只能操作自己的考卷")
+
+    # 已存在则直接返回
+    if exam_paper.file_path and os.path.exists(exam_paper.file_path):
+        return GeneratePdfResponse(exam_paper_id=exam_paper.id, file_path=exam_paper.file_path)
+
+    # 查询题目
+    questions_result = await db.execute(
+        select(ExamPaperQuestion).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+        .order_by(ExamPaperQuestion.sort)
+    )
+    ep_questions = list(questions_result.scalars().all())
+    if not ep_questions:
+        raise HTTPException(status_code=400, detail="考卷无题目")
+
+    ep_q_ids = [eq.question_id for eq in ep_questions]
+    q_result = await db.execute(select(Question).where(Question.id.in_(ep_q_ids)))
+    q_map = {q.id: q for q in q_result.scalars().all()}
+
+    questions_data = []
+    for eq_id in ep_q_ids:
+        q = q_map.get(eq_id)
+        if q:
+            questions_data.append({
+                "content": q.content,
+                "options": q.options,
+                "explanation": q.explanation,
+                "answer": q.answer,
+            })
+
+    if not questions_data:
+        raise HTTPException(status_code=400, detail="考卷无有效题目")
+
+    # 生成 PDF
+    from app.core.config import settings
+    pdf_stream = render_exam_paper_pdf_stream(
+        title=exam_paper.title,
+        difficulty_level=exam_paper.difficulty_level,
+        description=exam_paper.description,
+        questions=questions_data,
+    )
+
+    # 保存到文件
+    os.makedirs(settings.pdf_output_dir, exist_ok=True)
+    filename = f"paper_{exam_paper_id}_{short_id()}.pdf"
+    file_path = os.path.join(settings.pdf_output_dir, filename)
+    pdf_bytes = b"".join(pdf_stream)
+    with open(file_path, "wb") as f:
+        f.write(pdf_bytes)
+
+    exam_paper.file_path = file_path
+    await db.flush()
+
+    return GeneratePdfResponse(exam_paper_id=exam_paper.id, file_path=file_path)
+
+
+@router.delete("/{exam_paper_id}", response_model=DeletePaperResponse)
+async def delete_exam_paper(exam_paper_id: int, db: DBSession, user: CurrentUser):
+    """删除用户生成的考卷"""
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+    if exam_paper.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="只能删除自己的考卷")
+    if exam_paper.paper_type != "custom":
+        raise HTTPException(status_code=400, detail="只能删除用户生成的考卷")
+
+    # 删除 PDF 文件
+    if exam_paper.file_path and os.path.exists(exam_paper.file_path):
+        try:
+            os.remove(exam_paper.file_path)
+        except OSError:
+            pass
+
+    # 删除关联的考试记录和答案
+    test_ids_result = await db.execute(
+        select(ExamPaperTest.id).where(ExamPaperTest.exam_paper_id == exam_paper_id)
+    )
+    test_ids = [t for t in test_ids_result.scalars().all()]
+    if test_ids:
+        await db.execute(delete(TestAnswerRecord).where(TestAnswerRecord.test_id.in_(test_ids)))
+        await db.execute(delete(ExamPaperTest).where(ExamPaperTest.exam_paper_id == exam_paper_id))
+
+    # 删除题目关联
+    await db.execute(
+        delete(ExamPaperQuestion).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+    )
+
+    # 删除考卷
+    await db.execute(delete(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    await db.commit()
+
+    return DeletePaperResponse(ok=True)
 
 
 @router.post("/{exam_paper_id}/start", response_model=ExamPaperTestResponse)

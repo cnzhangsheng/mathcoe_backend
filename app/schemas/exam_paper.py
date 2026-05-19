@@ -40,6 +40,33 @@ class ExamPaperCreate(ExamPaperBase):
     pass
 
 
+class GeneratePaperRequest(BaseModel):
+    """生成考卷请求"""
+    mode: str = "manual"  # manual | smart
+    topic_ids: list[int] | None = None
+    difficulty_level: int = 3
+    question_count: int = 24
+    title: str | None = None
+
+
+class GeneratePaperResponse(BaseModel):
+    """生成考卷响应"""
+    exam_paper_id: int
+    title: str
+    total_questions: int
+
+
+class GeneratePdfResponse(BaseModel):
+    """生成 PDF 响应"""
+    exam_paper_id: int
+    file_path: str
+
+
+class DeletePaperResponse(BaseModel):
+    """删除考卷响应"""
+    ok: bool
+
+
 class ExamPaperUpdate(BaseModel):
     title: str | None = None
     difficulty_level: int | None = None
@@ -61,6 +88,8 @@ class ExamPaperResponse(BaseModel):
     status: str = "published"
     user_completed: bool = False
     user_score: int | None = None
+    user_id: int | None = None
+    generation_config: dict | None = None
     created_at: datetime | None
     updated_at: datetime | None
 
