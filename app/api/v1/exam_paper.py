@@ -764,38 +764,22 @@ async def export_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Current
 
 @router.get("/{exam_paper_id}/download-pdf")
 async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
-    """下载已生成的考卷 PDF（从 file_path 读取）"""
+    """下载考卷 PDF，若不存在则自动生成"""
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
     exam_paper = result.scalar_one_or_none()
     if not exam_paper:
         raise HTTPException(status_code=404, detail="考卷不存在")
 
-    if not exam_paper.file_path or not os.path.exists(exam_paper.file_path):
-        raise HTTPException(status_code=404, detail="PDF 文件不存在，请先生成 PDF")
-
-    filename = quote(f"{exam_paper.title}.pdf")
-    return StreamingResponse(
-        open(exam_paper.file_path, "rb"),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
-    )
-
-
-@router.post("/{exam_paper_id}/generate-pdf", response_model=GeneratePdfResponse)
-async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUser):
-    """生成考卷 PDF 并保存到文件"""
-    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
-    exam_paper = result.scalar_one_or_none()
-    if not exam_paper:
-        raise HTTPException(status_code=404, detail="考卷不存在")
-    if exam_paper.user_id != user["id"]:
-        raise HTTPException(status_code=403, detail="只能操作自己的考卷")
-
-    # 已存在则直接返回
+    # file_path 存在且文件存在，直接返回
     if exam_paper.file_path and os.path.exists(exam_paper.file_path):
-        return GeneratePdfResponse(exam_paper_id=exam_paper.id, file_path=exam_paper.file_path)
+        filename = quote(f"{exam_paper.title}.pdf")
+        return StreamingResponse(
+            open(exam_paper.file_path, "rb"),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        )
 
-    # 查询题目
+    # file_path 为空或文件不存在，生成 PDF
     questions_result = await db.execute(
         select(ExamPaperQuestion).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
         .order_by(ExamPaperQuestion.sort)
@@ -822,7 +806,6 @@ async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
     if not questions_data:
         raise HTTPException(status_code=400, detail="考卷无有效题目")
 
-    # 生成 PDF
     from app.core.config import settings
     pdf_stream = render_exam_paper_pdf_stream(
         title=exam_paper.title,
@@ -831,7 +814,6 @@ async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
         questions=questions_data,
     )
 
-    # 保存到文件
     os.makedirs(settings.pdf_output_dir, exist_ok=True)
     filename = f"paper_{exam_paper_id}.pdf"
     file_path = os.path.join(settings.pdf_output_dir, filename)
@@ -842,7 +824,13 @@ async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
     exam_paper.file_path = file_path
     await db.commit()
 
-    return GeneratePdfResponse(exam_paper_id=exam_paper.id, file_path=file_path)
+    filename = quote(f"{exam_paper.title}.pdf")
+    return StreamingResponse(
+        open(file_path, "rb"),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
 
 
 @router.delete("/{exam_paper_id}", response_model=DeletePaperResponse)
