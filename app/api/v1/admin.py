@@ -143,7 +143,8 @@ async def list_questions_admin(
     size: int = Query(20, ge=1, le=100),
     topic_id: int | None = None,
     difficulty_level: int | None = None,
-    source_year: int | None = None
+    source_year: int | None = None,
+    status: str | None = None
 ):
     """获取题目列表"""
     query = select(Question).options(
@@ -158,6 +159,8 @@ async def list_questions_admin(
         query = query.where(Question.difficulty_level == difficulty_level)
     if source_year:
         query = query.where(Question.source_year == source_year)
+    if status:
+        query = query.where(Question.status == status)
     query = query.order_by(Question.id.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -240,6 +243,46 @@ async def batch_delete_questions(ids: list[int], db: DBSession):
     await db.commit()
     logger.info(f"批量删除题目: ids={ids}, deleted_count={deleted_count}")
     return {"message": f"成功删除 {deleted_count} 道题目", "deleted_count": deleted_count}
+
+
+@router.post("/questions/{question_id}/publish")
+async def publish_question(question_id: int, db: DBSession):
+    """上架题目"""
+    result = await db.execute(
+        select(Question).options(
+            noload(Question.topic),
+            noload(Question.practice_records),
+            noload(Question.favorites),
+            noload(Question.wrong_questions)
+        ).where(Question.id == question_id)
+    )
+    question = result.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    question.status = "published"
+    await db.commit()
+    logger.info(f"上架题目: id={question_id}")
+    return {"message": "上架成功"}
+
+
+@router.post("/questions/{question_id}/unpublish")
+async def unpublish_question(question_id: int, db: DBSession):
+    """下架题目"""
+    result = await db.execute(
+        select(Question).options(
+            noload(Question.topic),
+            noload(Question.practice_records),
+            noload(Question.favorites),
+            noload(Question.wrong_questions)
+        ).where(Question.id == question_id)
+    )
+    question = result.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    question.status = "unpublished"
+    await db.commit()
+    logger.info(f"下架题目: id={question_id}")
+    return {"message": "下架成功"}
 
 
 @router.get("/questions/count")
@@ -475,11 +518,13 @@ async def add_question_to_exam_paper(exam_paper_id: int, data: ExamPaperQuestion
     if not exam_paper:
         raise HTTPException(status_code=404, detail="考卷不存在")
 
-    # 检查题目是否存在
+    # 检查题目是否存在且已发布
     question_result = await db.execute(select(Question).where(Question.id == data.question_id))
     question = question_result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在")
+    if question.status != "published":
+        raise HTTPException(status_code=400, detail="只能添加已发布的题目")
 
     # 检查题目数量限制
     count_result = await db.execute(

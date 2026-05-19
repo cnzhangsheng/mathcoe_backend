@@ -239,6 +239,7 @@ CREATE TABLE `questions` (
   `difficulty_level` int DEFAULT NULL,
   `source_year` int DEFAULT NULL,
   `tags` json DEFAULT (_utf8mb4'[]'),
+  `status` VARCHAR(16) NOT NULL DEFAULT 'unpublished';
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

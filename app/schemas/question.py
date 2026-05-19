@@ -88,6 +88,7 @@ class QuestionBase(BaseModel):
     difficulty_level: int  # 级别 1-6，必选
     source_year: int | None = None
     tags: list[str] | None = None
+    status: str = "unpublished"  # published | unpublished
 
 
 class QuestionCreate(QuestionBase):
@@ -105,6 +106,7 @@ class QuestionUpdate(BaseModel):
     source_year: int | None = None
     tags: list[str] | None = None
     topic_id: int | None = None
+    status: str | None = None  # published | unpublished
 
 
 class QuestionResponse(BaseQuestionSchema):
@@ -119,6 +121,7 @@ class QuestionResponse(BaseQuestionSchema):
     difficulty_level: int | None  # 级别 1-6
     source_year: int | None
     tags: list[str] | None
+    status: str = "unpublished"  # published | unpublished
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -135,6 +138,7 @@ class QuestionForPractice(BaseQuestionSchema):
     question_type: str = "single"  # 默认单选题
     options: list[dict] | None
     difficulty_level: int | None = 1  # 默认级别
+    status: str = "unpublished"  # published | unpublished
 
     class Config:
         from_attributes = True
@@ -152,6 +156,7 @@ class QuestionForDiscover(BaseQuestionSchema):
     answer: str
     explanation: dict | None
     difficulty_level: int | None = 1
+    status: str = "unpublished"  # published | unpublished
 
     class Config:
         from_attributes = True

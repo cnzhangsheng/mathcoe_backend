@@ -1,7 +1,7 @@
 """
 Question repository - data access for Question model
 """
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.question import Question
@@ -17,7 +17,8 @@ class QuestionRepository(BaseRepository[Question]):
         super().__init__(Question, session)
 
     async def get_by_topic(
-        self, topic_id: int, limit: int = 20, level: int | None = None, sort_by: str = "default"
+        self, topic_id: int, limit: int = 20, level: int | None = None, sort_by: str = "default",
+        published_only: bool = True,
     ) -> list[Question]:
         """Get questions by topic ID, optionally filtered by level and sorted
 
@@ -32,6 +33,8 @@ class QuestionRepository(BaseRepository[Question]):
         query = select(Question).where(Question.topic_id == topic_id)
         if level is not None:
             query = query.where(Question.difficulty_level == level)
+        if published_only:
+            query = query.where(Question.status == "published")
 
         if sort_by == "time":
             query = query.order_by(Question.created_at.desc())
@@ -65,16 +68,27 @@ class QuestionRepository(BaseRepository[Question]):
         result = await self.session.execute(query.limit(limit))
         return list(result.scalars().all())
 
-    async def get_by_year(self, year: int, limit: int = 20) -> list[Question]:
+    async def get_by_year(self, year: int, limit: int = 20, published_only: bool = True) -> list[Question]:
         """Get questions by source year"""
-        result = await self.session.execute(
-            select(Question).where(Question.source_year == year).limit(limit)
-        )
+        query = select(Question).where(Question.source_year == year)
+        if published_only:
+            query = query.where(Question.status == "published")
+        result = await self.session.execute(query.limit(limit))
         return list(result.scalars().all())
 
-    async def get_by_level(self, level: int, limit: int = 100) -> list[Question]:
+    async def get_by_level(self, level: int, limit: int = 100, published_only: bool = True) -> list[Question]:
         """Get questions by difficulty level (1-6)"""
-        result = await self.session.execute(
-            select(Question).where(Question.difficulty_level == level).limit(limit)
-        )
+        query = select(Question).where(Question.difficulty_level == level)
+        if published_only:
+            query = query.where(Question.status == "published")
+        result = await self.session.execute(query.limit(limit))
+        return list(result.scalars().all())
+
+    async def get_all(self, limit: int = 100, offset: int = 0, published_only: bool = True) -> list[Question]:
+        """Get all questions with pagination, optionally filtered by published status"""
+        query = select(Question)
+        if published_only:
+            query = query.where(Question.status == "published")
+        query = query.limit(limit).offset(offset)
+        result = await self.session.execute(query)
         return list(result.scalars().all())

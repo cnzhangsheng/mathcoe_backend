@@ -24,6 +24,7 @@ class Question(BaseModel):
     difficulty_level: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 级别 1-6
     source_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="unpublished", nullable=False)  # published | unpublished
 
     # Relationships
     topic = relationship("Topic", back_populates="questions", lazy="selectin")
