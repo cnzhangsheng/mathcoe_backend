@@ -39,4 +39,4 @@ app/static/uploads/*
 Thumbs.db
 
 # storage
-storage/*
+storage/
