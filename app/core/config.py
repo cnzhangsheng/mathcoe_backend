@@ -1,6 +1,7 @@
 """
 Application configuration using Pydantic Settings
 """
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,7 +31,13 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = True
     server_host: str = "http://127.0.0.1:8000"
-    pdf_output_dir: str = "storage/exam_custom_papers"
+    pdf_output_dir: str = ""
+
+    @property
+    def pdf_storage_dir(self) -> str:
+        """获取 PDF 存储目录的绝对路径"""
+        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(base, "storage", "exam_custom_papers")
 
     @property
     def database_url(self) -> str:

@@ -814,9 +814,9 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
         questions=questions_data,
     )
 
-    os.makedirs(settings.pdf_output_dir, exist_ok=True)
+    os.makedirs(settings.pdf_storage_dir, exist_ok=True)
     filename = f"paper_{exam_paper_id}.pdf"
-    file_path = os.path.join(settings.pdf_output_dir, filename)
+    file_path = os.path.join(settings.pdf_storage_dir, filename)
     pdf_bytes = b"".join(pdf_stream)
     with open(file_path, "wb") as f:
         f.write(pdf_bytes)
