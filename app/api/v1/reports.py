@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import select, func, desc, Integer
 from sqlalchemy.sql import and_
 
-from app.api.deps import DBSession
+from app.api.deps import DBSession, AdminUser
 from app.models.question import Question
 from app.models.practice_record import PracticeRecord
 from app.models.like import Like
@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 @router.get("/reports/question-type")
-async def get_question_type_report(db: DBSession):
+async def get_question_type_report(admin: AdminUser, db: DBSession):
     """用户题型偏好报表：各题型做题占比、点赞率、收藏率"""
     # 查询各题型的做题、点赞、收藏统计
     result = await db.execute(
@@ -61,7 +61,7 @@ async def get_question_type_report(db: DBSession):
 
 
 @router.get("/reports/topic-preference")
-async def get_topic_preference_report(db: DBSession):
+async def get_topic_preference_report(admin: AdminUser, db: DBSession):
     """知识点偏好运营报表：各知识点做题人次、收藏TOP、点赞TOP"""
     # 各知识点统计
     result = await db.execute(
@@ -107,7 +107,7 @@ async def get_topic_preference_report(db: DBSession):
 
 
 @router.get("/reports/exam-paper-stats")
-async def get_exam_paper_stats_report(db: DBSession):
+async def get_exam_paper_stats_report(admin: AdminUser, db: DBSession):
     """考卷用户统计数据：考卷维度统计"""
     # 整体考卷测试统计
     total_result = await db.execute(select(func.count(ExamPaperTest.id)))

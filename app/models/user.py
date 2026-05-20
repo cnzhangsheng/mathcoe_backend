@@ -23,6 +23,8 @@ class User(BaseModel):
     grade: Mapped[str] = mapped_column(String(2), default="G1", nullable=False)  # 年级 G1-G6
     daily_goal: Mapped[int] = mapped_column(Integer, default=12, nullable=False)  # 每日目标题数
     difficulty_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # 难度等级 1-6
+    user_tier: Mapped[str] = mapped_column(String(16), default="free", nullable=False, index=True)  # 用户等级: free | pro
+    tier_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # pro 到期时间
 
     # Relationships
     practice_records = relationship("PracticeRecord", back_populates="user", lazy="selectin")

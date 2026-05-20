@@ -293,6 +293,8 @@ CREATE TABLE `users` (
   `streak_days` int NOT NULL DEFAULT '0',
   `last_active_date` date DEFAULT NULL,
   `last_login_at` datetime DEFAULT NULL,
+  `user_tier` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'free',
+  `tier_expires_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

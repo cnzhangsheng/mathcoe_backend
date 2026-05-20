@@ -66,9 +66,25 @@ class UserResponse(BaseModel):
     grade: str
     daily_goal: int
     difficulty_level: int
+    user_tier: str = "free"
+    tier_expires_at: datetime | None = None
 
     class Config:
         from_attributes = True
+
+
+class UserTierUpdate(BaseModel):
+    """Admin-only schema for updating user tier"""
+    user_tier: str = "free"
+    tier_expires_at: datetime | None = None
+
+    @field_validator('user_tier')
+    @classmethod
+    def validate_tier(cls, v: str) -> str:
+        valid_tiers = {'free', 'pro'}
+        if v not in valid_tiers:
+            raise ValueError(f'user_tier must be one of {valid_tiers}')
+        return v
 
 
 class UserInsightResponse(BaseModel):

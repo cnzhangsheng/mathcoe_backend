@@ -11,13 +11,13 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
 
-from app.api.deps import DBSession
+from app.api.deps import DBSession, AdminUser
 from app.models.user import User
 from app.models.topic import Topic
 from app.models.question import Question
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.practice_record import PracticeRecord
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, UserTierUpdate
 from app.schemas.topic import TopicResponse, TopicCreate, TopicUpdate
 from app.schemas.question import QuestionResponse, QuestionCreate, QuestionUpdate
 from app.schemas.exam_paper import (
@@ -38,6 +38,7 @@ router = APIRouter()
 
 @router.get("/users", response_model=list[UserResponse])
 async def list_users(
+    admin: AdminUser,
     db: DBSession,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -45,6 +46,7 @@ async def list_users(
     grade: str | None = None,
     difficulty_level: int | None = None,
     daily_goal: int | None = None,
+    user_tier: str | None = None,
 ):
     """获取用户列表"""
     query = select(User).options(
@@ -60,13 +62,15 @@ async def list_users(
         query = query.where(User.difficulty_level == difficulty_level)
     if daily_goal:
         query = query.where(User.daily_goal == daily_goal)
+    if user_tier:
+        query = query.where(User.user_tier == user_tier)
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
-async def get_user_detail(user_id: int, db: DBSession):
+async def get_user_detail(user_id: int, admin: AdminUser, db: DBSession):
     """获取用户详情"""
     result = await db.execute(
         select(User).where(User.id == user_id)
@@ -77,10 +81,27 @@ async def get_user_detail(user_id: int, db: DBSession):
     return user
 
 
+@router.put("/users/{user_id}/tier", response_model=UserResponse)
+async def update_user_tier(user_id: int, data: UserTierUpdate, admin: AdminUser, db: DBSession):
+    """设置用户等级（free/pro）和 pro 到期时间"""
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    user.user_tier = data.user_tier
+    user.tier_expires_at = data.tier_expires_at
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 # ============ 专题管理 ============
 
 @router.get("/topics", response_model=list[TopicResponse])
-async def list_topics_admin(db: DBSession):
+async def list_topics_admin(admin: AdminUser, db: DBSession):
     """获取专题列表"""
     result = await db.execute(
         select(Topic).options(
@@ -91,7 +112,7 @@ async def list_topics_admin(db: DBSession):
 
 
 @router.post("/topics", response_model=TopicResponse)
-async def create_topic(data: TopicCreate, db: DBSession):
+async def create_topic(data: TopicCreate, admin: AdminUser, db: DBSession):
     """创建专题"""
     topic = Topic(**data.model_dump())
     db.add(topic)
@@ -101,7 +122,7 @@ async def create_topic(data: TopicCreate, db: DBSession):
 
 
 @router.put("/topics/{topic_id}", response_model=TopicResponse)
-async def update_topic(topic_id: int, data: TopicUpdate, db: DBSession):
+async def update_topic(topic_id: int, data: TopicUpdate, admin: AdminUser, db: DBSession):
     """更新专题"""
     result = await db.execute(
         select(Topic).options(
@@ -119,7 +140,7 @@ async def update_topic(topic_id: int, data: TopicUpdate, db: DBSession):
 
 
 @router.delete("/topics/{topic_id}")
-async def delete_topic(topic_id: int, db: DBSession):
+async def delete_topic(topic_id: int, admin: AdminUser, db: DBSession):
     """删除专题"""
     result = await db.execute(
         select(Topic).options(
@@ -138,6 +159,7 @@ async def delete_topic(topic_id: int, db: DBSession):
 
 @router.get("/questions", response_model=list[QuestionResponse])
 async def list_questions_admin(
+    admin: AdminUser,
     db: DBSession,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -167,7 +189,7 @@ async def list_questions_admin(
 
 
 @router.post("/questions", response_model=QuestionResponse)
-async def create_question(data: QuestionCreate, db: DBSession):
+async def create_question(data: QuestionCreate, admin: AdminUser, db: DBSession):
     """创建题目"""
     question = Question(**data.model_dump())
     db.add(question)
@@ -178,7 +200,7 @@ async def create_question(data: QuestionCreate, db: DBSession):
 
 
 @router.put("/questions/{question_id}", response_model=QuestionResponse)
-async def update_question(question_id: int, data: QuestionUpdate, db: DBSession):
+async def update_question(question_id: int, data: QuestionUpdate, admin: AdminUser, db: DBSession):
     """更新题目"""
     result = await db.execute(
         select(Question).options(
@@ -200,7 +222,7 @@ async def update_question(question_id: int, data: QuestionUpdate, db: DBSession)
 
 
 @router.delete("/questions/{question_id}")
-async def delete_question(question_id: int, db: DBSession):
+async def delete_question(question_id: int, admin: AdminUser, db: DBSession):
     """删除题目"""
     result = await db.execute(
         select(Question).options(
@@ -220,7 +242,7 @@ async def delete_question(question_id: int, db: DBSession):
 
 
 @router.post("/questions/batch-delete")
-async def batch_delete_questions(ids: list[int], db: DBSession):
+async def batch_delete_questions(ids: list[int], admin: AdminUser, db: DBSession):
     """批量删除题目"""
     if not ids:
         raise HTTPException(status_code=400, detail="请提供要删除的题目ID")
@@ -246,7 +268,7 @@ async def batch_delete_questions(ids: list[int], db: DBSession):
 
 
 @router.post("/questions/{question_id}/publish")
-async def publish_question(question_id: int, db: DBSession):
+async def publish_question(question_id: int, admin: AdminUser, db: DBSession):
     """上架题目"""
     result = await db.execute(
         select(Question).options(
@@ -266,7 +288,7 @@ async def publish_question(question_id: int, db: DBSession):
 
 
 @router.post("/questions/{question_id}/unpublish")
-async def unpublish_question(question_id: int, db: DBSession):
+async def unpublish_question(question_id: int, admin: AdminUser, db: DBSession):
     """下架题目"""
     result = await db.execute(
         select(Question).options(
@@ -286,7 +308,7 @@ async def unpublish_question(question_id: int, db: DBSession):
 
 
 @router.get("/questions/count")
-async def get_questions_count(db: DBSession, topic_id: int | None = None):
+async def get_questions_count(admin: AdminUser, db: DBSession, topic_id: int | None = None):
     """获取题目总数"""
     query = select(func.count(Question.id))
     if topic_id:
@@ -298,7 +320,7 @@ async def get_questions_count(db: DBSession, topic_id: int | None = None):
 # ============ 统计数据 ============
 
 @router.get("/stats")
-async def get_dashboard_stats(db: DBSession):
+async def get_dashboard_stats(admin: AdminUser, db: DBSession):
     """获取仪表盘统计数据"""
     users_count = await db.execute(select(func.count(User.id)))
     users_total = users_count.scalar() or 0
@@ -321,14 +343,14 @@ async def get_dashboard_stats(db: DBSession):
 
 
 @router.get("/stats/users")
-async def get_users_count(db: DBSession):
+async def get_users_count(admin: AdminUser, db: DBSession):
     """获取用户总数"""
     result = await db.execute(select(func.count(User.id)))
     return {"total": result.scalar()}
 
 
 @router.get("/stats/questions")
-async def get_questions_stats(db: DBSession, topic_id: int | None = None):
+async def get_questions_stats(admin: AdminUser, db: DBSession, topic_id: int | None = None):
     """获取题目统计"""
     query = select(func.count(Question.id))
     if topic_id:
@@ -341,6 +363,7 @@ async def get_questions_stats(db: DBSession, topic_id: int | None = None):
 
 @router.get("/exam-papers", response_model=list[ExamPaperResponse])
 async def list_exam_papers(
+    admin: AdminUser,
     db: DBSession,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -359,7 +382,7 @@ async def list_exam_papers(
 
 
 @router.post("/exam-papers", response_model=ExamPaperResponse)
-async def create_exam_paper(data: ExamPaperCreate, db: DBSession):
+async def create_exam_paper(data: ExamPaperCreate, admin: AdminUser, db: DBSession):
     """创建考卷"""
     exam_paper = ExamPaper(**data.model_dump())
     exam_paper.user_id = 100000000000
@@ -370,7 +393,7 @@ async def create_exam_paper(data: ExamPaperCreate, db: DBSession):
 
 
 @router.get("/exam-papers/{exam_paper_id}", response_model=ExamPaperWithQuestions)
-async def get_exam_paper_detail(exam_paper_id: int, db: DBSession):
+async def get_exam_paper_detail(exam_paper_id: int, admin: AdminUser, db: DBSession):
     """获取考卷详情（包含题目列表）"""
     # 获取考卷
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
@@ -390,7 +413,7 @@ async def get_exam_paper_detail(exam_paper_id: int, db: DBSession):
 
 
 @router.put("/exam-papers/{exam_paper_id}", response_model=ExamPaperResponse)
-async def update_exam_paper(exam_paper_id: int, data: ExamPaperUpdate, db: DBSession):
+async def update_exam_paper(exam_paper_id: int, data: ExamPaperUpdate, admin: AdminUser, db: DBSession):
     """更新考卷"""
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
     exam_paper = result.scalar_one_or_none()
@@ -404,7 +427,7 @@ async def update_exam_paper(exam_paper_id: int, data: ExamPaperUpdate, db: DBSes
 
 
 @router.delete("/exam-papers/{exam_paper_id}")
-async def delete_exam_paper(exam_paper_id: int, db: DBSession):
+async def delete_exam_paper(exam_paper_id: int, admin: AdminUser, db: DBSession):
     """删除考卷（同时删除关联的题目）"""
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
     exam_paper = result.scalar_one_or_none()
@@ -418,7 +441,7 @@ async def delete_exam_paper(exam_paper_id: int, db: DBSession):
 
 
 @router.post("/exam-papers/{exam_paper_id}/export-pdf")
-async def export_admin_exam_paper_pdf(exam_paper_id: int, db: DBSession):
+async def export_admin_exam_paper_pdf(exam_paper_id: int, admin: AdminUser, db: DBSession):
     """生成并导出考卷 PDF，保存到本地存储"""
     # 查询考卷
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
@@ -478,7 +501,7 @@ async def export_admin_exam_paper_pdf(exam_paper_id: int, db: DBSession):
 
 
 @router.get("/exam-papers/{exam_paper_id}/download-pdf")
-async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession):
+async def download_exam_paper_pdf(exam_paper_id: int, admin: AdminUser, db: DBSession):
     """下载已生成的考卷 PDF"""
     result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
     exam_paper = result.scalar_one_or_none()
@@ -499,7 +522,7 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession):
 # ============ 考卷题目管理 ============
 
 @router.get("/exam-papers/{exam_paper_id}/questions", response_model=list[ExamPaperQuestionResponse])
-async def list_exam_paper_questions(exam_paper_id: int, db: DBSession):
+async def list_exam_paper_questions(exam_paper_id: int, admin: AdminUser, db: DBSession):
     """获取考卷题目列表"""
     result = await db.execute(
         select(ExamPaperQuestion)
@@ -511,7 +534,7 @@ async def list_exam_paper_questions(exam_paper_id: int, db: DBSession):
 
 
 @router.post("/exam-papers/{exam_paper_id}/questions", response_model=ExamPaperQuestionResponse)
-async def add_question_to_exam_paper(exam_paper_id: int, data: ExamPaperQuestionCreate, db: DBSession):
+async def add_question_to_exam_paper(exam_paper_id: int, data: ExamPaperQuestionCreate, admin: AdminUser, db: DBSession):
     """添加题目到考卷"""
     # 检查考卷是否存在
     paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
@@ -570,7 +593,7 @@ async def add_question_to_exam_paper(exam_paper_id: int, data: ExamPaperQuestion
 
 
 @router.delete("/exam-papers/{exam_paper_id}/questions/{question_id}")
-async def remove_question_from_exam_paper(exam_paper_id: int, question_id: int, db: DBSession):
+async def remove_question_from_exam_paper(exam_paper_id: int, question_id: int, admin: AdminUser, db: DBSession):
     """从考卷移除题目"""
     result = await db.execute(
         select(ExamPaperQuestion)
@@ -586,7 +609,7 @@ async def remove_question_from_exam_paper(exam_paper_id: int, question_id: int, 
 
 
 @router.post("/exam-papers/{exam_paper_id}/questions/sort")
-async def update_exam_paper_questions_sort(exam_paper_id: int, sorts: list[dict], db: DBSession):
+async def update_exam_paper_questions_sort(exam_paper_id: int, sorts: list[dict], admin: AdminUser, db: DBSession):
     """更新考卷题目排序
     sorts: [{"id": 1, "sort": 1}, {"id": 2, "sort": 2}, ...]
     """
