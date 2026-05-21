@@ -4,7 +4,6 @@ ExamPaper API for miniapp - 用户端考卷接口
 import logging
 import os
 import random
-import re
 from datetime import datetime
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -822,8 +821,7 @@ async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
     )
 
     os.makedirs(settings.pdf_storage_dir, exist_ok=True)
-    safe_title = re.sub(r'[\\/*?:"<>|]', '_', exam_paper.title) if exam_paper.title else f"paper_{exam_paper_id}"
-    filename = f"{safe_title}.pdf"
+    filename = f"{exam_paper_id}.pdf"
     file_path = os.path.join(settings.pdf_storage_dir, filename)
     pdf_bytes = b"".join(pdf_stream)
     with open(file_path, "wb") as f:
@@ -888,8 +886,7 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
     )
 
     os.makedirs(settings.pdf_storage_dir, exist_ok=True)
-    safe_title = re.sub(r'[\\/*?:"<>|]', '_', exam_paper.title) if exam_paper.title else f"paper_{exam_paper_id}"
-    filename = f"{safe_title}.pdf"
+    filename = f"{exam_paper_id}.pdf"
     file_path = os.path.join(settings.pdf_storage_dir, filename)
     pdf_bytes = b"".join(pdf_stream)
     with open(file_path, "wb") as f:
