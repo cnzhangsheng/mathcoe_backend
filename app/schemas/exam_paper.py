@@ -47,6 +47,8 @@ class GeneratePaperRequest(BaseModel):
     difficulty_level: int = 3
     question_count: int = 24
     title: str | None = None
+    include_wrong: bool = False
+    include_favorite: bool = False
 
 
 class GeneratePaperResponse(BaseModel):

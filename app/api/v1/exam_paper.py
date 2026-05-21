@@ -17,7 +17,7 @@ from app.models.exam_paper_test import ExamPaperTest
 from app.models.exam_paper_test_answer import TestAnswerRecord
 from app.models.question import Question
 from app.models.topic import Topic
-from app.models.favorite import WrongQuestion
+from app.models.favorite import WrongQuestion, Favorite
 from app.models.practice_record import PracticeRecord
 from app.models.user import User
 from app.schemas.exam_paper import (
@@ -599,9 +599,45 @@ async def generate_exam_paper(req: GeneratePaperRequest, db: DBSession, user: Cu
     if not all_question_ids:
         raise HTTPException(status_code=400, detail="没有符合条件的题目")
 
-    # 3. 随机选取
-    random.shuffle(all_question_ids)
-    selected_ids = all_question_ids[:min(req.question_count, len(all_question_ids))]
+    # 2.5 按错题/收藏筛选
+    if req.include_wrong or req.include_favorite:
+        filtered_set = set()
+        if req.include_wrong:
+            wrong_result = await db.execute(
+                select(WrongQuestion.question_id).where(
+                    WrongQuestion.user_id == user["id"],
+                    WrongQuestion.question_id.in_(all_question_ids)
+                )
+            )
+            filtered_set.update(wrong_result.scalars().all())
+        if req.include_favorite:
+            fav_result = await db.execute(
+                select(Favorite.question_id).where(
+                    Favorite.user_id == user["id"],
+                    Favorite.question_id.in_(all_question_ids)
+                )
+            )
+            filtered_set.update(fav_result.scalars().all())
+
+        # 优先取错题/收藏中的题目
+        filtered_ids = list(filtered_set)
+        random.shuffle(filtered_ids)
+        selected_ids = filtered_ids[:]
+
+        # 如果不够，从普通题目池补足
+        if len(selected_ids) < req.question_count:
+            remaining = [qid for qid in all_question_ids if qid not in selected_ids]
+            random.shuffle(remaining)
+            needed = req.question_count - len(selected_ids)
+            selected_ids.extend(remaining[:needed])
+
+        # 打乱最终顺序
+        random.shuffle(selected_ids)
+        selected_ids = selected_ids[:req.question_count]
+    else:
+        # 3. 随机选取
+        random.shuffle(all_question_ids)
+        selected_ids = all_question_ids[:min(req.question_count, len(all_question_ids))]
 
     # 4. 创建 ExamPaper
     paper = ExamPaper(
