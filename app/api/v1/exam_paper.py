@@ -763,6 +763,78 @@ async def export_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Current
     )
 
 
+@router.get("/{exam_paper_id}/pdf-status")
+async def check_exam_paper_pdf_status(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
+    """检查考卷 PDF 是否已生成"""
+    result = await db.execute(select(ExamPaper.file_path).where(ExamPaper.id == exam_paper_id))
+    file_path = result.scalar_one_or_none()
+    if file_path is None:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+    exists = bool(file_path) and os.path.exists(file_path)
+    return {"exists": exists}
+
+
+@router.post("/{exam_paper_id}/generate-pdf", response_model=GeneratePdfResponse)
+async def generate_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
+    """生成考卷 PDF 并保存到磁盘"""
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    # 已生成且文件存在，直接返回
+    if exam_paper.file_path and os.path.exists(exam_paper.file_path):
+        return {"message": "PDF 已存在", "file_path": exam_paper.file_path}
+
+    # 生成 PDF
+    questions_result = await db.execute(
+        select(ExamPaperQuestion).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+        .order_by(ExamPaperQuestion.sort)
+    )
+    ep_questions = list(questions_result.scalars().all())
+    if not ep_questions:
+        raise HTTPException(status_code=400, detail="考卷无题目")
+
+    ep_q_ids = [eq.question_id for eq in ep_questions]
+    q_result = await db.execute(select(Question).where(Question.id.in_(ep_q_ids)))
+    q_map = {q.id: q for q in q_result.scalars().all()}
+
+    questions_data = []
+    for eq_id in ep_q_ids:
+        q = q_map.get(eq_id)
+        if q:
+            questions_data.append({
+                "content": q.content,
+                "options": q.options,
+                "explanation": q.explanation,
+                "answer": q.answer,
+            })
+
+    if not questions_data:
+        raise HTTPException(status_code=400, detail="考卷无有效题目")
+
+    from app.core.config import settings
+    pdf_stream = render_exam_paper_pdf_stream(
+        title=exam_paper.title,
+        difficulty_level=exam_paper.difficulty_level,
+        description=exam_paper.description,
+        questions=questions_data,
+    )
+
+    os.makedirs(settings.pdf_storage_dir, exist_ok=True)
+    safe_title = re.sub(r'[\\/*?:"<>|]', '_', exam_paper.title) if exam_paper.title else f"paper_{exam_paper_id}"
+    filename = f"{safe_title}.pdf"
+    file_path = os.path.join(settings.pdf_storage_dir, filename)
+    pdf_bytes = b"".join(pdf_stream)
+    with open(file_path, "wb") as f:
+        f.write(pdf_bytes)
+
+    exam_paper.file_path = file_path
+    await db.commit()
+
+    return {"message": "PDF 生成成功", "file_path": file_path}
+
+
 @router.get("/{exam_paper_id}/download-pdf")
 async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
     """下载考卷 PDF，若不存在则自动生成"""
