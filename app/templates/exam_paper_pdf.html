@@ -19,10 +19,15 @@
     color: #333;
   }
   .paper-header {
-    text-align: center;
+    display: flex;
+    align-items: center;
     padding-bottom: 8pt;
     margin-bottom: 12pt;
     border-bottom: 2px solid #6366F1;
+  }
+  .paper-header-center {
+    flex: 1;
+    text-align: center;
   }
   .paper-title {
     font-size: 18pt;
@@ -36,6 +41,11 @@
   }
   .paper-meta span {
     margin: 0 10pt;
+  }
+  .header-logo {
+    width: 140pt;
+    height: auto;
+    margin-left: 12pt;
   }
 
   /* Question block — shared */
@@ -140,13 +150,19 @@
 
   /* Answer section */
   .answers-header {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 16pt;
     font-weight: 700;
     color: #6366F1;
     padding: 20pt 0;
     margin-bottom: 20pt;
     border-bottom: 2px dashed #6366F1;
+  }
+  .answers-header-center {
+    flex: 1;
+    text-align: center;
   }
   .answer-grid {
     display: flex;
@@ -178,12 +194,15 @@
 <body>
 
 <div class="paper-header">
-  <div class="paper-title">{{ paper.title }}</div>
-  <div class="paper-meta">
-    <span>难度：Level {{ paper.difficulty_level }}</span>
-    <span>共 {{ questions|length }} 题</span>
-    <span>{{ paper.description or '' }}</span>
+  <div class="paper-header-center">
+    <div class="paper-title">{{ paper.title }}</div>
+    <div class="paper-meta">
+      <span>难度：Level {{ paper.difficulty_level }}</span>
+      <span>共 {{ questions|length }} 题</span>
+      <span>{{ paper.description or '' }}</span>
+    </div>
   </div>
+  <img src="scan.png" alt="" class="header-logo">
 </div>
 
 <!-- === 题目部分 === -->
@@ -232,7 +251,10 @@
 <!-- === 换页：参考答案 === -->
 <div style="page-break-before: always;"></div>
 
-<div class="answers-header">参考答案</div>
+<div class="answers-header">
+  <div class="answers-header-center">参考答案</div>
+  <img src="scan.png" alt="" class="header-logo">
+</div>
 
 <ul class="answer-grid">
 {% for q in questions %}

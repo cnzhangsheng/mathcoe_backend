@@ -334,7 +334,7 @@ def render_exam_paper_pdf(
 
     logger.info(f"PDF生成: HTML渲染完成 title={title}, html_size={len(html)}")
 
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = HTML(string=html, base_url=str(TEMPLATE_DIR)).write_pdf()
     logger.info(f"PDF生成: 完成 title={title}, pdf_size={len(pdf_bytes)}字节")
     return pdf_bytes
 
