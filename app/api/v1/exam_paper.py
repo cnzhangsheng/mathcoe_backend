@@ -801,11 +801,11 @@ async def export_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Current
 @router.get("/{exam_paper_id}/pdf-status")
 async def check_exam_paper_pdf_status(exam_paper_id: int, db: DBSession, user: CurrentUserOptional):
     """检查考卷 PDF 是否已生成"""
-    result = await db.execute(select(ExamPaper.file_path).where(ExamPaper.id == exam_paper_id))
-    file_path = result.scalar_one_or_none()
-    if file_path is None:
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    paper = result.scalar_one_or_none()
+    if paper is None:
         raise HTTPException(status_code=404, detail="考卷不存在")
-    exists = bool(file_path) and os.path.exists(file_path)
+    exists = bool(paper.file_path) and os.path.exists(paper.file_path)
     return {"exists": exists}
 
 
