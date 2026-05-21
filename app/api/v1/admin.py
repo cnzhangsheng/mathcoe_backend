@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
 
 from app.api.deps import DBSession, AdminUser
+from app.core.config import settings
 from app.models.user import User
 from app.models.topic import Topic
 from app.models.question import Question
@@ -624,3 +625,11 @@ async def update_exam_paper_questions_sort(exam_paper_id: int, sorts: list[dict]
             epq.sort = item["sort"]
     await db.commit()
     return {"message": "排序更新成功"}
+
+
+@router.get("/config")
+async def get_admin_config(admin: AdminUser):
+    """获取管理后台配置"""
+    return {
+        "server_host": settings.server_host,
+    }
