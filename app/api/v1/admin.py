@@ -5,7 +5,7 @@ import logging
 import os
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -369,7 +369,8 @@ async def list_exam_papers(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     difficulty_level: int | None = None,
-    paper_type: str | None = None
+    paper_type: str | None = None,
+    title: str | None = None
 ):
     """获取考卷列表"""
     query = select(ExamPaper)
@@ -377,7 +378,9 @@ async def list_exam_papers(
         query = query.where(ExamPaper.difficulty_level == difficulty_level)
     if paper_type:
         query = query.where(ExamPaper.paper_type == paper_type)
-    query = query.offset((page - 1) * size).limit(size)
+    if title:
+        query = query.where(ExamPaper.title.like(f"%{title}%"))
+    query = query.order_by(ExamPaper.created_at.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -591,6 +594,95 @@ async def add_question_to_exam_paper(exam_paper_id: int, data: ExamPaperQuestion
         .where(ExamPaperQuestion.id == exam_paper_question.id)
     )
     return result.scalar_one()
+
+
+@router.post("/exam-papers/{exam_paper_id}/questions/random")
+async def add_random_questions_to_exam_paper(
+    exam_paper_id: int,
+    admin: AdminUser,
+    db: DBSession,
+    topic_ids: list[int] | None = Body(None, embed=True)
+):
+    """随机添加题目到考卷（按难度等级匹配，补全剩余题目数量）"""
+    # 检查考卷是否存在
+    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = paper_result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    # 计算可添加数量
+    count_result = await db.execute(
+        select(func.count(ExamPaperQuestion.id)).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+    )
+    current_count = count_result.scalar() or 0
+    remaining = exam_paper.total_questions - current_count
+    if remaining <= 0:
+        raise HTTPException(status_code=400, detail=f"考卷题目已满（{exam_paper.total_questions}题）")
+
+    # 查询已添加的题目 ID
+    existing_result = await db.execute(
+        select(ExamPaperQuestion.question_id).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+    )
+    existing_ids = {row[0] for row in existing_result.all()}
+
+    # 随机选取匹配难度等级的已发布题目（排除已添加的）
+    query = (
+        select(Question.id)
+        .where(Question.status == "published")
+        .where(Question.difficulty_level == exam_paper.difficulty_level)
+        .order_by(func.rand())
+        .limit(remaining)
+    )
+    if existing_ids:
+        query = query.where(Question.id.notin_(existing_ids))
+    if topic_ids:
+        query = query.where(Question.topic_id.in_(topic_ids))
+
+    random_result = await db.execute(query)
+    question_ids = [row[0] for row in random_result.all()]
+
+    if not question_ids:
+        raise HTTPException(status_code=400, detail="题库中没有更多匹配难度等级的题目")
+
+    # 获取当前最大排序号
+    max_sort_result = await db.execute(
+        select(func.max(ExamPaperQuestion.sort)).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+    )
+    max_sort = max_sort_result.scalar() or 0
+
+    # 批量添加
+    added = []
+    for i, qid in enumerate(question_ids):
+        epq = ExamPaperQuestion(
+            exam_paper_id=exam_paper_id,
+            question_id=qid,
+            sort=max_sort + i + 1
+        )
+        db.add(epq)
+        added.append({"question_id": qid, "sort": max_sort + i + 1})
+
+    await db.commit()
+
+    return {
+        "message": f"已随机添加 {len(added)} 道题目",
+        "added_count": len(added),
+        "questions": added
+    }
+
+
+@router.delete("/exam-papers/{exam_paper_id}/questions")
+async def clear_exam_paper_questions(exam_paper_id: int, admin: AdminUser, db: DBSession):
+    """清空考卷所有题目"""
+    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = paper_result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考卷不存在")
+
+    await db.execute(
+        delete(ExamPaperQuestion).where(ExamPaperQuestion.exam_paper_id == exam_paper_id)
+    )
+    await db.commit()
+    return {"message": "已清空所有题目"}
 
 
 @router.delete("/exam-papers/{exam_paper_id}/questions/{question_id}")
