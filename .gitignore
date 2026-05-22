@@ -32,6 +32,7 @@ logs/
 
 # Uploads (keep structure, ignore files)
 app/static/uploads/*
+app/static/banners/*
 !app/static/uploads/.gitkeep
 
 # OS
