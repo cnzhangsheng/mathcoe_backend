@@ -14,6 +14,7 @@ from app.models.favorite import Favorite, WrongQuestion
 from app.models.like import Like
 from app.models.content import Content
 from app.models.banner import Banner
+from app.models.feedback import Feedback
 
 __all__ = [
     "Base",
@@ -32,4 +33,5 @@ __all__ = [
     "Like",
     "Content",
     "Banner",
+    "Feedback",
 ]
