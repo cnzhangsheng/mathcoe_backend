@@ -474,9 +474,9 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
         result = await self.session.execute(query)
         return list(result.scalars().all()), total
 
-    async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestion:
+    async def add_wrong_question(self, user_id: int, question_id: int, user_answer: str | None = None) -> WrongQuestion:
         """Add or update wrong question"""
-        logger.info(f"添加错题: user_id={user_id}, question_id={question_id}")
+        logger.info(f"添加错题: user_id={user_id}, question_id={question_id}, user_answer={user_answer}")
         result = await self.session.execute(
             select(WrongQuestion)
             .where(WrongQuestion.user_id == user_id)
@@ -489,11 +489,14 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
                 "id": short_id(),
                 "user_id": user_id,
                 "question_id": question_id,
+                "user_answer": user_answer,
                 "last_retry_at": datetime.now(),
             })
         else:
             wrong.retry_count += 1
             wrong.last_retry_at = datetime.now()
+            if user_answer is not None:
+                wrong.user_answer = user_answer
             await self.session.commit()
             await self.session.refresh(wrong)
             logger.info(f"更新错题记录: user_id={user_id}, question_id={question_id}, retry_count={wrong.retry_count}")

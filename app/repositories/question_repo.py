@@ -84,11 +84,21 @@ class QuestionRepository(BaseRepository[Question]):
         result = await self.session.execute(query.limit(limit))
         return list(result.scalars().all())
 
-    async def get_all(self, limit: int = 100, offset: int = 0, published_only: bool = True) -> list[Question]:
+    async def get_all(self, limit: int = 100, offset: int = 0, published_only: bool = True, sort_by: str = "default") -> list[Question]:
         """Get all questions with pagination, optionally filtered by published status"""
         query = select(Question)
         if published_only:
             query = query.where(Question.status == "published")
+
+        if sort_by == "favorites":
+            favorite_subq = (
+                select(Favorite.question_id, func.count(Favorite.id).label("favorite_count"))
+                .group_by(Favorite.question_id)
+                .subquery()
+            )
+            query = query.outerjoin(favorite_subq, favorite_subq.c.question_id == Question.id)
+            query = query.order_by(func.coalesce(favorite_subq.c.favorite_count, 0).desc())
+
         query = query.limit(limit).offset(offset)
         result = await self.session.execute(query)
         return list(result.scalars().all())

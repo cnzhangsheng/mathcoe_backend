@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Query
 
 from app.api.deps import DBSession, CurrentUser
-from app.schemas.practice import FavoriteRequest, FavoriteResponse, WrongQuestionResponse, WrongQuestionDetailResponse, FavoriteDetailResponse, WrongQuestionsPaginatedResponse, FavoritesPaginatedResponse
+from app.schemas.practice import FavoriteRequest, WrongQuestionRequest, FavoriteResponse, WrongQuestionResponse, WrongQuestionDetailResponse, FavoriteDetailResponse, WrongQuestionsPaginatedResponse, FavoritesPaginatedResponse
 from app.services.practice_service import PracticeService
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,11 @@ async def get_wrong_questions(
 
 
 @router.post("/wrong", response_model=WrongQuestionResponse)
-async def add_wrong_question(request: FavoriteRequest, db: DBSession, current_user: CurrentUser):
+async def add_wrong_question(request: WrongQuestionRequest, db: DBSession, current_user: CurrentUser):
     """Add question to wrong questions list"""
-    logger.info(f"添加错题: user_id={current_user['id']}, question_id={request.question_id}")
+    logger.info(f"添加错题: user_id={current_user['id']}, question_id={request.question_id}, user_answer={request.user_answer}")
     service = PracticeService(db)
-    wrong_question = await service.add_wrong_question(current_user["id"], request.question_id)
+    wrong_question = await service.add_wrong_question(current_user["id"], request.question_id, request.user_answer)
     logger.info(f"错题添加成功: wrong_question_id={wrong_question.id}")
     return wrong_question
 

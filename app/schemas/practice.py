@@ -50,6 +50,11 @@ class FavoriteRequest(BaseModel):
     question_id: int
 
 
+class WrongQuestionRequest(BaseModel):
+    question_id: int
+    user_answer: str | None = None
+
+
 class FavoriteResponse(BaseModel):
     id: int
     question_id: int
@@ -64,6 +69,7 @@ class WrongQuestionResponse(BaseModel):
     id: int
     question_id: int
     question_title: str | None = None
+    user_answer: str | None = None
     retry_count: int
     mastered: bool
     last_retry_at: datetime | None = None

@@ -51,11 +51,19 @@ class GeneratePaperRequest(BaseModel):
     include_favorite: bool = False
 
 
+class TopicQuestionCount(BaseModel):
+    """专题题目数量"""
+    topic_id: int
+    topic_title: str
+    count: int
+
+
 class GeneratePaperResponse(BaseModel):
     """生成考卷响应"""
     exam_paper_id: int
     title: str
     total_questions: int
+    topic_question_counts: list[TopicQuestionCount] = []
 
 
 class GeneratePdfResponse(BaseModel):

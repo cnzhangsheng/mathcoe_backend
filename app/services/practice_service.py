@@ -14,7 +14,6 @@ from app.repositories.practice_repo import (
     WrongQuestionRepository,
     FavoriteRepository,
 )
-from app.models.exam_paper_test_answer import TestAnswerRecord
 from app.schemas.practice import (
     PracticeStartResponse,
     PracticeSubmitResponse,
@@ -116,7 +115,7 @@ class PracticeService:
         # 错题记录
         if not is_correct:
             logger.info(f"添加错题记录: user_id={user_id}, question_id={question_id}")
-            await self.wrong_repo.add_wrong_question(user_id, question_id)
+            await self.wrong_repo.add_wrong_question(user_id, question_id, user_answer)
 
         return PracticeSubmitResponse(
             is_correct=is_correct,
@@ -285,14 +284,10 @@ class PracticeService:
         return await self.favorite_repo.remove_favorite(user_id, question_id)
 
     async def get_wrong_questions(self, user_id: int) -> list[WrongQuestionDetailResponse]:
-        """Get user wrong questions with full question info and last wrong answer"""
+        """Get user wrong questions with full question info"""
         logger.info(f"获取错题列表: user_id={user_id}")
         wrong_list = await self.wrong_repo.get_by_user_with_question(user_id)
         logger.info(f"错题列表获取完成: count={len(wrong_list)}")
-
-        # Batch get last wrong answers
-        question_ids = [w.question_id for w in wrong_list]
-        last_answers = await self._batch_get_last_wrong_answers(user_id, question_ids)
 
         return [
             WrongQuestionDetailResponse(
@@ -306,7 +301,7 @@ class PracticeService:
                 question_answer=w.question.answer if w.question else None,
                 question_explanation=w.question.explanation if w.question else None,
                 question_difficulty_level=w.question.difficulty_level if w.question else None,
-                user_answer=last_answers.get(w.question_id),
+                user_answer=w.user_answer,
                 retry_count=w.retry_count,
                 mastered=w.mastered,
                 created_at=w.created_at,
@@ -315,16 +310,12 @@ class PracticeService:
         ]
 
     async def get_wrong_questions_paginated(self, user_id: int, page: int, page_size: int, topic_id: int | None = None) -> WrongQuestionsPaginatedResponse:
-        """Get paginated user wrong questions with full question info and last wrong answer"""
+        """Get paginated user wrong questions with full question info"""
         logger.info(f"获取错题列表(分页): user_id={user_id}, page={page}, page_size={page_size}, topic_id={topic_id}")
         wrong_list, total = await self.wrong_repo.get_by_user_with_question_paginated_filtered(
             user_id, page, page_size, topic_id=topic_id
         )
         logger.info(f"错题列表获取完成: count={len(wrong_list)}, total={total}")
-
-        # Batch get last wrong answers
-        question_ids = [w.question_id for w in wrong_list]
-        last_answers = await self._batch_get_last_wrong_answers(user_id, question_ids)
 
         items = [
             WrongQuestionDetailResponse(
@@ -338,7 +329,7 @@ class PracticeService:
                 question_answer=w.question.answer if w.question else None,
                 question_explanation=w.question.explanation if w.question else None,
                 question_difficulty_level=w.question.difficulty_level if w.question else None,
-                user_answer=last_answers.get(w.question_id),
+                user_answer=w.user_answer,
                 retry_count=w.retry_count,
                 mastered=w.mastered,
                 created_at=w.created_at,
@@ -347,57 +338,19 @@ class PracticeService:
         ]
         return WrongQuestionsPaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
-    async def add_wrong_question(self, user_id: int, question_id: int) -> WrongQuestionResponse:
+    async def add_wrong_question(self, user_id: int, question_id: int, user_answer: str | None = None) -> WrongQuestionResponse:
         """Add question to wrong questions list"""
         logger.info(f"添加错题: user_id={user_id}, question_id={question_id}")
-        wrong_question = await self.wrong_repo.add_wrong_question(user_id, question_id)
+        wrong_question = await self.wrong_repo.add_wrong_question(user_id, question_id, user_answer)
         logger.info(f"错题添加成功: wrong_question_id={wrong_question.id}")
         return WrongQuestionResponse(
             id=wrong_question.id,
             question_id=wrong_question.question_id,
+            user_answer=wrong_question.user_answer,
             retry_count=wrong_question.retry_count,
             mastered=wrong_question.mastered,
             created_at=wrong_question.created_at,
         )
-
-    async def _get_last_wrong_answer(self, session: AsyncSession, user_id: int, question_id: int) -> str | None:
-        """Get user's last wrong answer for a question"""
-        result = await session.execute(
-            select(TestAnswerRecord)
-            .where(TestAnswerRecord.user_id == user_id)
-            .where(TestAnswerRecord.question_id == question_id)
-            .where(TestAnswerRecord.is_correct == False)
-            .order_by(TestAnswerRecord.created_at.desc())
-            .limit(1)
-        )
-        record = result.scalar_one_or_none()
-        return record.user_answer if record else None
-
-    async def _batch_get_last_wrong_answers(self, user_id: int, question_ids: list[int]) -> dict[int, str | None]:
-        """Batch get the last wrong answer for each question_id (single query, no N+1).
-
-        Returns dict mapping question_id -> last wrong answer (or None).
-        """
-        if not question_ids:
-            return {}
-
-        result = await self.session.execute(
-            select(TestAnswerRecord.question_id, TestAnswerRecord.user_answer, TestAnswerRecord.created_at)
-            .where(TestAnswerRecord.user_id == user_id)
-            .where(TestAnswerRecord.question_id.in_(question_ids))
-            .where(TestAnswerRecord.is_correct == False)
-            .order_by(TestAnswerRecord.question_id, TestAnswerRecord.created_at.desc())
-        )
-        rows = result.all()
-
-        # Take the first (latest by created_at desc) for each question_id
-        seen = set()
-        answer_map: dict[int, str | None] = {}
-        for row in rows:
-            if row.question_id not in seen:
-                seen.add(row.question_id)
-                answer_map[row.question_id] = row.user_answer
-        return answer_map
 
     async def mark_wrong_mastered(self, user_id: int, question_id: int) -> bool:
         """Mark a wrong question as mastered"""

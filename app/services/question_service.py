@@ -21,14 +21,15 @@ class QuestionService:
         topic_id: int | None = None,
         year: int | None = None,
         limit: int = 20,
+        sort_by: str = "default",
     ) -> list[QuestionForPractice]:
         """Get questions with filters"""
         if topic_id:
-            questions = await self.question_repo.get_by_topic(topic_id, limit)
+            questions = await self.question_repo.get_by_topic(topic_id, limit, sort_by=sort_by)
         elif year:
             questions = await self.question_repo.get_by_year(year, limit)
         else:
-            questions = await self.question_repo.get_all(limit)
+            questions = await self.question_repo.get_all(limit, sort_by=sort_by)
 
         return [
             QuestionForPractice(

@@ -25,7 +25,7 @@ from app.schemas.exam_paper import (
     ExamPaperTestStart, ExamPaperTestAnswer, ExamPaperTestSubmit,
     ExamPaperTestResponse, ExamPaperTestDetail, ExamPaperTestList,
     ExamPaperTestAnswerResponse, UserWrongQuestion, ExamPaperTestReport,
-    GeneratePaperRequest, GeneratePaperResponse,
+    GeneratePaperRequest, GeneratePaperResponse, TopicQuestionCount,
     GeneratePdfResponse, DeletePaperResponse,
 )
 from app.utils.id_generator import short_id
@@ -222,22 +222,22 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     correct_answers_summary = {}
     answer_records = []
     practice_records = []  # 用于同步到PracticeRecord表
-    wrong_question_ids = []  # 收集错题ID
+    wrong_question_ids = []  # 收集 (错题ID, 用户答案) 元组
 
     for i, q in enumerate(questions, 1):
         question_id = q.question_id
         correct_answer = q.question.answer
-        user_answer = submit.answers.get(i)
+        user_answer_str = submit.answers.get(i)
 
         correct_answers_summary[i] = correct_answer
 
         # 未选择答案视为错误
-        is_correct = bool(user_answer and user_answer.upper() == correct_answer.upper())
+        is_correct = bool(user_answer_str and user_answer_str.upper() == correct_answer.upper())
         if is_correct:
             correct_count += 1
         else:
-            # 收集错题ID
-            wrong_question_ids.append(question_id)
+            # 收集错题
+            wrong_question_ids.append((question_id, user_answer_str or ""))
 
         # TestAnswerRecord（考卷测试专用）
         answer_record = TestAnswerRecord(
@@ -276,7 +276,7 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
     await db.commit()
 
     # 将错题加入错题本
-    for question_id in wrong_question_ids:
+    for question_id, user_answer_str in wrong_question_ids:
         # 检查是否已存在
         existing = await db.execute(
             select(WrongQuestion)
@@ -288,12 +288,14 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
             # 更新重试次数
             wrong_record.retry_count += 1
             wrong_record.last_retry_at = datetime.utcnow()
+            wrong_record.user_answer = user_answer_str
         else:
             # 创建新记录
             wrong_record = WrongQuestion(
                 id=short_id(),
                 user_id=user["id"],
-                question_id=question_id
+                question_id=question_id,
+                user_answer=user_answer_str,
             )
             db.add(wrong_record)
     await db.commit()
@@ -638,6 +640,35 @@ async def generate_exam_paper(req: GeneratePaperRequest, db: DBSession, user: Cu
         random.shuffle(all_question_ids)
         selected_ids = all_question_ids[:min(req.question_count, len(all_question_ids))]
 
+    # 3.5 统计各专题的题目数量
+    if selected_ids:
+        topic_count_result = await db.execute(
+            select(Question.topic_id, func.count(Question.id))
+            .where(Question.id.in_(selected_ids))
+            .group_by(Question.topic_id)
+        )
+        topic_counts = {}
+        for tid, cnt in topic_count_result.all():
+            topic_counts[tid] = cnt
+
+        # 获取专题标题
+        topic_info_result = await db.execute(
+            select(Topic.id, Topic.title)
+            .where(Topic.id.in_(list(topic_counts.keys())))
+        )
+        topic_titles = {tid: title for tid, title in topic_info_result.all()}
+
+        topic_question_counts = [
+            TopicQuestionCount(
+                topic_id=tid,
+                topic_title=topic_titles.get(tid, f"专题{tid}"),
+                count=cnt
+            )
+            for tid, cnt in sorted(topic_counts.items(), key=lambda x: -x[1])
+        ]
+    else:
+        topic_question_counts = []
+
     # 4. 创建 ExamPaper
     paper = ExamPaper(
         title=title,
@@ -670,7 +701,8 @@ async def generate_exam_paper(req: GeneratePaperRequest, db: DBSession, user: Cu
     return GeneratePaperResponse(
         exam_paper_id=paper.id,
         title=paper.title,
-        total_questions=paper.total_questions
+        total_questions=paper.total_questions,
+        topic_question_counts=topic_question_counts,
     )
 
 
@@ -1087,7 +1119,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
     answer_records = []
     practice_records = []  # 用于同步到PracticeRecord表
     answer_sheet_data = []  # 用于返回答题卡数据
-    wrong_question_ids = []  # 收集错题ID
+    wrong_question_ids = []  # 收集 (错题ID, 用户答案) 元组
 
     for i, q in enumerate(questions, 1):
         question_id = q.question_id
@@ -1100,8 +1132,8 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
         if is_correct:
             correct_count += 1
         else:
-            # 收集错题ID
-            wrong_question_ids.append(question_id)
+            # 收集错题
+            wrong_question_ids.append((question_id, user_answer or ""))
 
         # 处理题目内容
         question_content = None
@@ -1181,7 +1213,7 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
     logger.info(f"保存答题记录: {len(answer_records)}条TestAnswerRecord, {len(practice_records)}条PracticeRecord")
 
     # 将错题加入错题本
-    for question_id in wrong_question_ids:
+    for question_id, user_answer_str in wrong_question_ids:
         # 检查是否已存在
         existing_wrong = await db.execute(
             select(WrongQuestion)
@@ -1193,13 +1225,15 @@ async def submit_exam_paper_direct(exam_paper_id: int, submit: ExamPaperTestSubm
             # 更新重试次数
             wrong_record.retry_count += 1
             wrong_record.last_retry_at = datetime.utcnow()
+            wrong_record.user_answer = user_answer_str
             logger.info(f"更新错题记录: question_id={question_id}, retry_count={wrong_record.retry_count}")
         else:
             # 创建新记录
             wrong_record = WrongQuestion(
                 id=short_id(),
                 user_id=user["id"],
-                question_id=question_id
+                question_id=question_id,
+                user_answer=user_answer_str,
             )
             db.add(wrong_record)
             logger.info(f"创建错题记录: question_id={question_id}")

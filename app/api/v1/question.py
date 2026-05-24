@@ -16,10 +16,11 @@ async def get_questions(
     topic_id: int | None = None,
     year: int | None = None,
     limit: int = 20,
+    sort_by: str = "default",
 ):
     """Get questions with filters"""
     service = QuestionService(db)
-    return await service.get_questions(topic_id, year, limit)
+    return await service.get_questions(topic_id, year, limit, sort_by)
 
 
 @router.get("/{question_id}", response_model=QuestionResponse)

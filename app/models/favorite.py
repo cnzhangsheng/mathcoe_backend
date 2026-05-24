@@ -3,7 +3,7 @@ Favorite and WrongQuestion models
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, Integer, BigInteger, ForeignKey, UniqueConstraint, DateTime, text
+from sqlalchemy import Boolean, Integer, BigInteger, String, ForeignKey, UniqueConstraint, DateTime, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel, Base
@@ -34,6 +34,7 @@ class WrongQuestion(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     question_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("questions.id"), nullable=False)
+    user_answer: Mapped[str | None] = mapped_column(String(8), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_retry_at: Mapped[datetime] = mapped_column(DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     mastered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
