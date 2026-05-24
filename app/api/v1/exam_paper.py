@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, delete, insert, and_, Integer
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import DBSession, CurrentUser, CurrentUserOptional
+from app.api.deps import DBSession, CurrentUser, CurrentUserOptional, UserOrNone
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.exam_paper_test import ExamPaperTest
 from app.models.exam_paper_test_answer import TestAnswerRecord
@@ -323,24 +323,24 @@ async def submit_exam_paper_test(test_id: int, submit: ExamPaperTestSubmit, db: 
 @router.get("", response_model=ExamPaperListResponse)
 async def list_exam_papers(
     db: DBSession,
-    user: CurrentUser,
+    user: UserOrNone,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     paper_type: str | None = Query(default=None),
 ):
     """获取考卷列表（分页，支持按类型筛选），附带用户作答状态"""
-    # 获取用户难度等级
-    user_result = await db.execute(select(User).where(User.id == user["id"]))
-    user_info = user_result.scalar_one_or_none()
-    if not user_info:
-        return ExamPaperListResponse(total=0, page=page, page_size=page_size, items=[])
-
     # 构建查询条件
     conditions = [
-        ExamPaper.difficulty_level == user_info.difficulty_level,
         ExamPaper.status == "published",
         ExamPaper.user_id == 100000000000,
     ]
+
+    if user:
+        # 获取用户难度等级
+        user_result = await db.execute(select(User).where(User.id == user["id"]))
+        user_info = user_result.scalar_one_or_none()
+        if user_info:
+            conditions.append(ExamPaper.difficulty_level == user_info.difficulty_level)
     if paper_type:
         conditions.append(ExamPaper.paper_type == paper_type)
 
@@ -364,23 +364,22 @@ async def list_exam_papers(
     if not papers:
         return ExamPaperListResponse(total=total, page=page, page_size=page_size, items=[])
 
-    # 查询用户对这些考卷的测试记录
-    paper_ids = [p.id for p in papers]
-    tests_result = await db.execute(
-        select(ExamPaperTest.exam_paper_id, ExamPaperTest.score, ExamPaperTest.status)
-        .where(ExamPaperTest.user_id == user["id"])
-        .where(ExamPaperTest.exam_paper_id.in_(paper_ids))
-    )
-    user_tests = tests_result.all()
-
-    # 构建 paper_id -> 测试记录 的映射
+    # 查询用户对这些考卷的测试记录（仅登录用户）
     test_map: dict[int, tuple[int | None, str]] = {}
-    for t in user_tests:
-        existing = test_map.get(t.exam_paper_id)
-        if existing and existing[1] == "completed":
-            continue
-        if t.status == "completed":
-            test_map[t.exam_paper_id] = (t.score, t.status)
+    if user:
+        paper_ids = [p.id for p in papers]
+        tests_result = await db.execute(
+            select(ExamPaperTest.exam_paper_id, ExamPaperTest.score, ExamPaperTest.status)
+            .where(ExamPaperTest.user_id == user["id"])
+            .where(ExamPaperTest.exam_paper_id.in_(paper_ids))
+        )
+        user_tests = tests_result.all()
+        for t in user_tests:
+            existing = test_map.get(t.exam_paper_id)
+            if existing and existing[1] == "completed":
+                continue
+            if t.status == "completed":
+                test_map[t.exam_paper_id] = (t.score, t.status)
 
     # 组装响应
     responses = []

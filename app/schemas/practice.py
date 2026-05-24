@@ -66,6 +66,7 @@ class WrongQuestionResponse(BaseModel):
     question_title: str | None = None
     retry_count: int
     mastered: bool
+    last_retry_at: datetime | None = None
     created_at: datetime | None
 
     class Config:
@@ -87,6 +88,7 @@ class WrongQuestionDetailResponse(BaseQuestionSchema):
     user_answer: str | None = None  # 最近一次错误答案
     retry_count: int
     mastered: bool
+    last_retry_at: datetime | None = None
     created_at: datetime | None
 
     class Config:

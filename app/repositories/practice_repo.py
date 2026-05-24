@@ -489,6 +489,7 @@ class WrongQuestionRepository(BaseRepository[WrongQuestion]):
                 "id": short_id(),
                 "user_id": user_id,
                 "question_id": question_id,
+                "last_retry_at": datetime.now(),
             })
         else:
             wrong.retry_count += 1

@@ -33,6 +33,26 @@ async def get_current_user(
     return {"id": int(user_id), "openid": payload.get("openid")}
 
 
+async def get_user_or_none(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+) -> dict | None:
+    """Get current user from JWT token, returns None if not authenticated"""
+    if credentials is None:
+        return None
+
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+
+    return {"id": int(user_id), "openid": payload.get("openid")}
+
+
 async def get_current_user_optional_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))] = None,
     token: str | None = Query(default=None, description="JWT token as query parameter"),
@@ -88,3 +108,4 @@ DBSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 CurrentUserOptional = Annotated[dict, Depends(get_current_user_optional_token)]
 AdminUser = Annotated[dict, Depends(get_current_admin)]
+UserOrNone = Annotated[dict | None, Depends(get_user_or_none)]
