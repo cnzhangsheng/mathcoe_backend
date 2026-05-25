@@ -5,8 +5,8 @@ import logging
 import os
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query, Body
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
@@ -20,7 +20,8 @@ from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.practice_record import PracticeRecord
 from app.schemas.user import UserResponse, UserTierUpdate
 from app.schemas.topic import TopicResponse, TopicCreate, TopicUpdate
-from app.schemas.question import QuestionResponse, QuestionCreate, QuestionUpdate
+from app.schemas.question import QuestionResponse, QuestionCreate, QuestionUpdate, BatchImportResponse
+from app.services.question_batch_import import batch_import
 from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperCreate, ExamPaperUpdate, ExamPaperWithQuestions,
     ExamPaperQuestionCreate, ExamPaperQuestionUpdate, ExamPaperQuestionResponse
@@ -266,6 +267,41 @@ async def batch_delete_questions(ids: list[int], admin: AdminUser, db: DBSession
     await db.commit()
     logger.info(f"批量删除题目: ids={ids}, deleted_count={deleted_count}")
     return {"message": f"成功删除 {deleted_count} 道题目", "deleted_count": deleted_count}
+
+
+@router.post("/questions/batch-import", response_model=BatchImportResponse)
+async def batch_import_questions(
+    admin: AdminUser,
+    db: DBSession,
+    excel: UploadFile = File(...),
+    zip: UploadFile | None = File(None),
+):
+    """批量导入题目（Excel + 可选 ZIP 图片包）"""
+    if not excel.filename or not excel.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="文件格式错误，仅支持 .xlsx 格式")
+
+    excel_bytes = await excel.read()
+    zip_bytes = None
+    if zip and zip.filename:
+        if not zip.filename.endswith(".zip"):
+            raise HTTPException(status_code=400, detail="图片包仅支持 .zip 格式")
+        zip_bytes = await zip.read()
+
+    result = await batch_import(db, excel_bytes, zip_bytes)
+    return BatchImportResponse(data=result.to_dict())
+
+
+@router.get("/questions/batch-import-template")
+async def download_batch_import_template(admin: AdminUser):
+    """下载批量导入 Excel 模板"""
+    template_path = "app/static/templates/batch_import_template.xlsx"
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="模板文件不存在")
+    return FileResponse(
+        template_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="batch_import_template.xlsx",
+    )
 
 
 @router.post("/questions/{question_id}/publish")

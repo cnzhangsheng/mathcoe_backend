@@ -160,3 +160,8 @@ class QuestionForDiscover(BaseQuestionSchema):
 
     class Config:
         from_attributes = True
+
+
+class BatchImportResponse(BaseModel):
+    success: bool = True
+    data: dict | None = None

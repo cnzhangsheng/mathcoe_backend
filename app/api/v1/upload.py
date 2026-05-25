@@ -25,14 +25,14 @@ async def upload_image(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="只支持图片文件")
 
-    # 构建上传目录
-    STATIC_DIR = "app/static"
+    # 无 folder 时按年月自动分目录
     if folder:
-        upload_dir = os.path.join(STATIC_DIR, folder)
+        upload_dir = os.path.join("app/static", folder)
         url_prefix = folder
     else:
-        upload_dir = BASE_UPLOAD_DIR
-        url_prefix = "uploads"
+        year_month = datetime.now().strftime("%Y%m")
+        upload_dir = os.path.join(BASE_UPLOAD_DIR, year_month)
+        url_prefix = f"uploads/{year_month}"
     os.makedirs(upload_dir, exist_ok=True)
 
     # 生成唯一文件名
