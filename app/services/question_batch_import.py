@@ -318,7 +318,7 @@ async def batch_import(
                 } if (explanation_text or q_images.get("content")) else None,
                 difficulty_level=difficulty,
                 source_year=source_year,
-                status="published",
+                status="unpublished",
             )
             questions_to_create.append(question)
 
