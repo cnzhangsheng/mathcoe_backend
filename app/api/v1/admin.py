@@ -3,16 +3,19 @@ Admin management API - 用户、专题、题目、考卷管理
 """
 import logging
 import os
+import datetime
+import io
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, text, inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
 
 from app.api.deps import DBSession, AdminUser
 from app.core.config import settings
+from app.db.session import engine
 from app.models.user import User
 from app.models.topic import Topic
 from app.models.question import Question
@@ -761,3 +764,206 @@ async def get_admin_config(admin: AdminUser):
     return {
         "server_host": settings.server_host,
     }
+
+
+# ============ 数据备份 ============
+
+BACKUP_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "storage", "backups")
+os.makedirs(BACKUP_STORAGE_DIR, exist_ok=True)
+
+
+def _escape_sql_value(val):
+    """将 Python 值转义为 SQL 字面值"""
+    if val is None:
+        return "NULL"
+    if isinstance(val, bool):
+        return "1" if val else "0"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, datetime.datetime):
+        return f"'{val.strftime('%Y-%m-%d %H:%M:%S')}'"
+    if isinstance(val, datetime.date):
+        return f"'{val.strftime('%Y-%m-%d')}'"
+    s = str(val).replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return f"'{s}'"
+
+
+async def _dump_database() -> tuple[str, str]:
+    """导出全部表格：DDL（建表语句）和 DML（数据）分别返回"""
+    ddl_buf = io.StringIO()
+    dml_buf = io.StringIO()
+
+    header = (
+        f"-- MySQL Database Backup\n"
+        f"-- Database: {settings.mysql_db}\n"
+        f"-- Generated at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"SET NAMES utf8mb4;\n\n"
+    )
+    ddl_buf.write(header)
+    ddl_buf.write("SET FOREIGN_KEY_CHECKS = 0;\n\n")
+    dml_buf.write(header)
+    dml_buf.write("SET FOREIGN_KEY_CHECKS = 0;\n\n")
+
+    async with engine.begin() as conn:
+        result = await conn.execute(text("SHOW TABLES"))
+        tables = [row[0] for row in result.fetchall()]
+        total_tables = len(tables)
+
+        for idx, table_name in enumerate(tables, 1):
+            # ---- DDL ----
+            ddl_buf.write(f"-- ----------------------------\n")
+            ddl_buf.write(f"-- Table structure for `{table_name}` ({idx}/{total_tables})\n")
+            ddl_buf.write(f"-- ----------------------------\n")
+
+            ddl_result = await conn.execute(text(f"SHOW CREATE TABLE `{table_name}`"))
+            ddl_row = ddl_result.fetchone()
+            if ddl_row:
+                create_sql = ddl_row[1]
+                ddl_buf.write(f"DROP TABLE IF EXISTS `{table_name}`;\n")
+                ddl_buf.write(create_sql + ";\n\n")
+
+            # ---- DML ----
+            dml_buf.write(f"-- ----------------------------\n")
+            dml_buf.write(f"-- Data for `{table_name}` ({idx}/{total_tables})\n")
+            dml_buf.write(f"-- ----------------------------\n")
+
+            count_result = await conn.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))
+            row_count = count_result.scalar()
+
+            if row_count == 0:
+                dml_buf.write(f"-- 0 rows\n\n")
+                continue
+
+            col_result = await conn.execute(text(f"SELECT * FROM `{table_name}` LIMIT 0"))
+            columns = list(col_result.keys())
+            col_list = ", ".join(f"`{c}`" for c in columns)
+            insert_prefix = f"INSERT INTO `{table_name}` ({col_list}) VALUES "
+
+            batch_size = 500
+            for offset in range(0, row_count, batch_size):
+                rows_result = await conn.execute(
+                    text(f"SELECT * FROM `{table_name}` LIMIT :limit OFFSET :offset"),
+                    {"limit": batch_size, "offset": offset}
+                )
+                rows = rows_result.fetchall()
+
+                values_list = []
+                for row in rows:
+                    vals = ", ".join(_escape_sql_value(v) for v in row)
+                    values_list.append(f"({vals})")
+
+                dml_buf.write(insert_prefix + ",\n".join(values_list) + ";\n\n")
+
+            dml_buf.write(f"-- {row_count} rows total\n\n")
+
+    ddl_buf.write("SET FOREIGN_KEY_CHECKS = 1;\n")
+    dml_buf.write("SET FOREIGN_KEY_CHECKS = 1;\n")
+    return ddl_buf.getvalue(), dml_buf.getvalue()
+
+
+@router.get("/backups")
+async def list_backups(admin: AdminUser):
+    """获取备份列表（按组：每组含 DDL + DML 两个文件）"""
+    groups: dict[str, dict] = {}
+    if not os.path.exists(BACKUP_STORAGE_DIR):
+        return {"items": []}
+
+    for filename in sorted(os.listdir(BACKUP_STORAGE_DIR), reverse=True):
+        if not filename.endswith(".sql"):
+            continue
+        filepath = os.path.join(BACKUP_STORAGE_DIR, filename)
+        stat = os.stat(filepath)
+
+        # 从文件名提取组标识: mathcoe_db_20260525_143000_ddl.sql / _data.sql
+        base = filename.replace(".sql", "")
+        is_ddl = base.endswith("_ddl")
+        is_data = base.endswith("_data")
+
+        if is_ddl:
+            group_key = base[:-4]  # 去掉 _ddl
+        elif is_data:
+            group_key = base[:-5]  # 去掉 _data
+        else:
+            continue
+
+        if group_key not in groups:
+            groups[group_key] = {"id": group_key, "created_at": "", "ddl_file": None, "data_file": None}
+
+        # 解析时间
+        name_parts = group_key.split("_")
+        created_at = ""
+        if len(name_parts) >= 3:
+            try:
+                date_str = name_parts[-2]
+                time_str = name_parts[-1]
+                created_at = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]} {time_str[:2]}:{time_str[2:4]}:{time_str[4:6]}"
+            except (IndexError, ValueError):
+                created_at = datetime.datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
+        groups[group_key]["created_at"] = created_at or groups[group_key]["created_at"]
+
+        file_info = {"filename": filename, "size": str(stat.st_size)}
+        if is_ddl:
+            groups[group_key]["ddl_file"] = file_info
+        elif is_data:
+            groups[group_key]["data_file"] = file_info
+
+    items = sorted(groups.values(), key=lambda g: g["created_at"], reverse=True)
+    return {"items": items}
+
+
+@router.post("/backups")
+async def create_backup(admin: AdminUser):
+    """创建数据库备份（DDL 和数据分别生成文件）"""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_name = f"mathcoe_db_{timestamp}"
+    ddl_path = os.path.join(BACKUP_STORAGE_DIR, f"{base_name}_ddl.sql")
+    data_path = os.path.join(BACKUP_STORAGE_DIR, f"{base_name}_data.sql")
+
+    try:
+        ddl_content, data_content = await _dump_database()
+
+        with open(ddl_path, "w", encoding="utf-8") as f:
+            f.write(ddl_content)
+        with open(data_path, "w", encoding="utf-8") as f:
+            f.write(data_content)
+
+        ddl_size = os.stat(ddl_path).st_size
+        data_size = os.stat(data_path).st_size
+        logger.info(f"数据库备份成功: {base_name}, ddl={ddl_size}, data={data_size}")
+        return {"message": "备份创建成功", "data": {"base_name": base_name, "ddl_size": str(ddl_size), "data_size": str(data_size)}}
+    except Exception as e:
+        for p in (ddl_path, data_path):
+            if os.path.exists(p):
+                os.remove(p)
+        logger.error(f"备份失败: {e}")
+        raise HTTPException(status_code=500, detail=f"备份失败: {str(e)[:200]}")
+
+
+@router.get("/backups/{backup_id}/download")
+async def download_backup(backup_id: str, admin: AdminUser):
+    """下载备份文件"""
+    filepath = os.path.join(BACKUP_STORAGE_DIR, backup_id)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="备份文件不存在")
+
+    return FileResponse(
+        filepath,
+        media_type="application/sql",
+        filename=backup_id,
+    )
+
+
+@router.delete("/backups/{backup_id}")
+async def delete_backup(backup_id: str, admin: AdminUser):
+    """删除备份组（同时删除 DDL 和数据文件）"""
+    deleted = []
+    for suffix in ("_ddl.sql", "_data.sql"):
+        filepath = os.path.join(BACKUP_STORAGE_DIR, f"{backup_id}{suffix}")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            deleted.append(filepath)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="备份文件不存在")
+    logger.info(f"删除备份组: {backup_id}, files={deleted}")
+    return {"message": "删除成功"}
