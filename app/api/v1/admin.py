@@ -307,6 +307,48 @@ async def download_batch_import_template(admin: AdminUser):
     )
 
 
+@router.post("/questions/batch-publish")
+async def batch_publish_questions(ids: list[int], admin: AdminUser, db: DBSession):
+    """批量上架题目"""
+    if not ids:
+        raise HTTPException(status_code=400, detail="请提供要上架的题目ID")
+    result = await db.execute(
+        select(Question).where(Question.id.in_(ids)).options(
+            noload(Question.topic), noload(Question.practice_records),
+            noload(Question.favorites), noload(Question.wrong_questions)
+        )
+    )
+    questions = result.scalars().all()
+    updated = 0
+    for q in questions:
+        q.status = "published"
+        updated += 1
+    await db.commit()
+    logger.info(f"批量上架题目: ids={ids}, updated={updated}")
+    return {"message": f"成功上架 {updated} 道题目", "updated_count": updated}
+
+
+@router.post("/questions/batch-unpublish")
+async def batch_unpublish_questions(ids: list[int], admin: AdminUser, db: DBSession):
+    """批量下架题目"""
+    if not ids:
+        raise HTTPException(status_code=400, detail="请提供要下架的题目ID")
+    result = await db.execute(
+        select(Question).where(Question.id.in_(ids)).options(
+            noload(Question.topic), noload(Question.practice_records),
+            noload(Question.favorites), noload(Question.wrong_questions)
+        )
+    )
+    questions = result.scalars().all()
+    updated = 0
+    for q in questions:
+        q.status = "unpublished"
+        updated += 1
+    await db.commit()
+    logger.info(f"批量下架题目: ids={ids}, updated={updated}")
+    return {"message": f"成功下架 {updated} 道题目", "updated_count": updated}
+
+
 @router.post("/questions/{question_id}/publish")
 async def publish_question(question_id: int, admin: AdminUser, db: DBSession):
     """上架题目"""
