@@ -113,14 +113,48 @@ def _parse_zip(zip_bytes: bytes) -> dict[int, dict]:
     return mapping
 
 
-def _replace_img_placeholders(text: str, image_urls: list[str], img_style: str = "") -> str:
-    """Replace {img} placeholders in text with <img> tags."""
-    if not image_urls:
-        return text
+def _process_html_content(text: str, image_urls: list[str], img_style: str = "") -> str:
+    """Process content text with {img} placeholders.
+
+    Wraps text segments in <p> and each image in <p><img.../></p>.
+    Example: "text{img}" → "<p>text</p><p><img src=\"...\"/></p>"
+    """
     style_attr = f' style="{img_style}"' if img_style else ""
-    for url in image_urls:
-        text = IMG_PLACEHOLDER_RE.sub(f'<img src="{url}"{style_attr}/>', text, 1)
-    return text
+
+    if "{img}" not in text:
+        # No placeholders — wrap whole text in <p> if not already
+        result = text.strip()
+        if result and not (result.startswith("<") and result.endswith(">")):
+            result = f"<p>{result}</p>"
+        # Append any images after the text
+        for url in image_urls:
+            result += f'<p><img src="{url}"{style_attr}/></p>'
+        return result
+
+    # Split by {img} and interleave text segments with images
+    segments = text.split("{img}")
+    parts = []
+    img_idx = 0
+
+    for i, seg in enumerate(segments):
+        # Text segment
+        seg = seg.strip()
+        if seg:
+            if seg.startswith("<") and seg.endswith(">"):
+                parts.append(seg)
+            else:
+                parts.append(f"<p>{seg}</p>")
+
+        # Image after this segment (if available)
+        if i < len(image_urls):
+            parts.append(f'<p><img src="{image_urls[i]}"{style_attr}/></p>')
+            img_idx += 1
+
+    # Any remaining unused images
+    for url in image_urls[img_idx:]:
+        parts.append(f'<p><img src="{url}"{style_attr}/></p>')
+
+    return "".join(parts)
 
 
 def _strip_html(src: str) -> str:
@@ -249,8 +283,8 @@ async def batch_import(
             # --- 3. Process images for this question ---
             q_images = image_map.get(qnum, {"content": [], "options": {}})
 
-            # Replace {img} in content (width: 100%)
-            processed_content = _replace_img_placeholders(content_text, q_images.get("content", []), "width: 100%;")
+            # Process content (text + images in <p> tags)
+            processed_content = _process_html_content(content_text, q_images.get("content", []), "width: 100%;")
 
             # Build options array
             option_labels = ["A", "B", "C", "D", "E"]
@@ -270,7 +304,7 @@ async def batch_import(
                     continue
 
                 if has_text or has_image:
-                    processed_opt_text = _replace_img_placeholders(opt_text or "", opt_img_urls, "width: 50%;")
+                    processed_opt_text = _process_html_content(opt_text or "", opt_img_urls, "width: 50%;")
                     options_list.append({
                         "label": label,
                         "text": processed_opt_text,
@@ -294,8 +328,8 @@ async def batch_import(
                     ))
                     continue
 
-            # Process explanation (width: 100%)
-            processed_explanation = _replace_img_placeholders(explanation_text or "", q_images.get("content", []), "width: 100%;")
+            # Process explanation (text + images in <p> tags)
+            processed_explanation = _process_html_content(explanation_text or "", q_images.get("content", []), "width: 100%;")
 
             # Build title
             title = _extract_title_from_content(content_text)
@@ -315,7 +349,7 @@ async def batch_import(
                 explanation={
                     "text": processed_explanation,
                     "format": "html",
-                } if (explanation_text or q_images.get("content")) else None,
+                } if explanation_text else None,
                 difficulty_level=difficulty,
                 source_year=source_year,
                 status="unpublished",
