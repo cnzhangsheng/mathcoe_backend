@@ -5,7 +5,12 @@ import logging
 import os
 import datetime
 import io
+import uuid
+import zipfile
 from urllib.parse import quote
+
+import cv2
+import numpy as np
 
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
@@ -1009,3 +1014,230 @@ async def delete_backup(backup_id: str, admin: AdminUser):
         raise HTTPException(status_code=404, detail="备份文件不存在")
     logger.info(f"删除备份组: {backup_id}, files={deleted}")
     return {"message": "删除成功"}
+
+
+# ============ 图片管理 ============
+
+STATIC_DIR = os.path.realpath("app/static")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+
+
+def _scan_images(subdir: str = "") -> list[dict]:
+    """Scan static directory (non-recursive) and return image file list."""
+    base = os.path.join(STATIC_DIR, subdir) if subdir else STATIC_DIR
+    if not os.path.isdir(base):
+        return []
+
+    results: list[dict] = []
+    for entry in os.scandir(base):
+        if not entry.is_file():
+            continue
+        ext = os.path.splitext(entry.name)[1].lower()
+        if ext not in IMAGE_EXTENSIONS:
+            continue
+
+        rel_path = os.path.relpath(entry.path, STATIC_DIR)
+        stat = entry.stat()
+        results.append({
+            "path": rel_path,
+            "filename": entry.name,
+            "directory": subdir,
+            "size": stat.st_size,
+            "modified": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "url": f"{settings.server_host.rstrip('/')}/api/v1/static/{rel_path}",
+        })
+    return results
+
+
+@router.get("/images")
+async def list_images(
+    admin: AdminUser,
+    directory: str = Query("", description="子目录，如 uploads/202605"),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+):
+    """列出图片，支持按目录筛选和分页"""
+    all_images = _scan_images(directory)
+    total = len(all_images)
+
+    start = (page - 1) * size
+    end = start + size
+    items = all_images[start:end]
+
+    # 收集所有子目录（排除隐藏目录和非图片目录）
+    EXCLUDED_DIRS = {"templates", "logs"}
+    dirs = set()
+    base = os.path.join(STATIC_DIR, directory) if directory else STATIC_DIR
+    if os.path.isdir(base):
+        for entry in os.scandir(base):
+            if entry.is_dir() and not entry.name.startswith(".") and entry.name not in EXCLUDED_DIRS:
+                dirs.add(entry.name)
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "subdirs": sorted(dirs),
+        "current_directory": directory,
+    }
+
+
+@router.delete("/images")
+async def delete_image(
+    admin: AdminUser,
+    path: str = Query(..., description="图片相对路径，如 uploads/202605/xxx.png"),
+):
+    """删除指定图片"""
+    filepath = os.path.realpath(os.path.join(STATIC_DIR, path))
+    if not filepath.startswith(STATIC_DIR):
+        raise HTTPException(status_code=400, detail="非法路径")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="不支持的文件类型")
+
+    os.remove(filepath)
+    logger.info(f"删除图片: path={path}")
+    return {"message": "删除成功"}
+
+
+@router.post("/images/batch-delete")
+async def batch_delete_images(
+    admin: AdminUser,
+    paths: list[str] = Body(...),
+):
+    """批量删除图片"""
+    if not paths:
+        raise HTTPException(status_code=400, detail="请提供要删除的图片路径")
+
+    deleted = 0
+    errors: list[dict] = []
+    for path in paths:
+        filepath = os.path.realpath(os.path.join(STATIC_DIR, path))
+        if not filepath.startswith(STATIC_DIR):
+            errors.append({"path": path, "message": "非法路径"})
+            continue
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in IMAGE_EXTENSIONS:
+            errors.append({"path": path, "message": "不支持的文件类型"})
+            continue
+        if not os.path.exists(filepath):
+            errors.append({"path": path, "message": "图片不存在"})
+            continue
+        os.remove(filepath)
+        deleted += 1
+
+    logger.info(f"批量删除图片: total={len(paths)}, deleted={deleted}, errors={len(errors)}")
+    return {"message": f"成功删除 {deleted} 张图片", "deleted": deleted, "errors": errors}
+
+
+@router.post("/images/batch-download")
+async def batch_download_images(
+    admin: AdminUser,
+    paths: list[str] = Body(...),
+):
+    """批量下载图片为 ZIP 包"""
+    if not paths:
+        raise HTTPException(status_code=400, detail="请提供要下载的图片路径")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in paths:
+            filepath = os.path.realpath(os.path.join(STATIC_DIR, path))
+            if not filepath.startswith(STATIC_DIR) or not os.path.exists(filepath):
+                continue
+            # Use just the filename inside ZIP (avoid subdirectory nesting)
+            arcname = os.path.basename(filepath)
+            zf.write(filepath, arcname)
+
+    buf.seek(0)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="images_{timestamp}.zip"'},
+    )
+
+
+@router.post("/images/upload")
+async def upload_admin_image(
+    admin: AdminUser,
+    file: UploadFile = File(...),
+    directory: str = Query("", description="目标目录，如 banners"),
+):
+    """上传图片到指定目录"""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="只支持图片文件")
+
+    target_dir = os.path.join(STATIC_DIR, directory) if directory else STATIC_DIR
+    os.makedirs(target_dir, exist_ok=True)
+
+    ext = file.filename.split(".")[-1] if file.filename else "jpg"
+    filename = f"{datetime.datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(target_dir, filename)
+
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    rel_path = os.path.relpath(filepath, STATIC_DIR)
+    url = f"{settings.server_host.rstrip('/')}/api/v1/static/{rel_path}"
+    return {"url": url, "filename": filename, "path": rel_path}
+
+
+@router.post("/images/sharpen")
+async def sharpen_images(
+    admin: AdminUser,
+    paths: list[str] = Body(...),
+):
+    """对图片应用 OpenCV 锐化处理（Unsharp Mask），保存为原文件名 _sharpened 版本"""
+    if not paths:
+        raise HTTPException(status_code=400, detail="请提供要锐化的图片路径")
+
+    results: list[dict] = []
+    for path in paths:
+        try:
+            filepath = os.path.realpath(os.path.join(STATIC_DIR, path))
+            if not filepath.startswith(STATIC_DIR):
+                results.append({"path": path, "success": False, "message": "非法路径"})
+                continue
+
+            if not os.path.exists(filepath):
+                results.append({"path": path, "success": False, "message": "图片不存在"})
+                continue
+
+            # Read image with OpenCV
+            img = cv2.imread(filepath)
+            if img is None:
+                results.append({"path": path, "success": False, "message": "无法读取图片"})
+                continue
+
+            # --- 图片增强 ---
+            # 1. 轻微降噪（保护画质）
+            img = cv2.GaussianBlur(img, (1, 1), 0)
+
+            # 2. 提高对比度
+            img = cv2.convertScaleAbs(img, alpha=1.2, beta=10)
+
+            # 3. 锐化
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+            sharpened = cv2.filter2D(img, -1, kernel)
+
+            # Save as _sharpened
+            stem, ext = os.path.splitext(filepath)
+            stem = stem.rstrip("_sharpened")  # prevent stacking
+            out_path = f"{stem}_sharpened{ext}"
+            cv2.imwrite(out_path, sharpened)
+
+            rel_out = os.path.relpath(out_path, STATIC_DIR)
+            url = f"{settings.server_host.rstrip('/')}/api/v1/static/{rel_out}"
+            results.append({"path": rel_out, "success": True, "message": "锐化成功", "url": url})
+        except Exception as e:
+            logger.exception("图片锐化失败: path=%s", path)
+            results.append({"path": path, "success": False, "message": f"处理异常: {e}"})
+
+    success_count = sum(1 for r in results if r["success"])
+    return {"message": f"锐化完成: {success_count}/{len(results)}", "results": results}
