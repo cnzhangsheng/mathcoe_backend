@@ -239,7 +239,8 @@ async def delete_question(question_id: int, admin: AdminUser, db: DBSession):
             noload(Question.topic),
             noload(Question.practice_records),
             noload(Question.favorites),
-            noload(Question.wrong_questions)
+            noload(Question.wrong_questions),
+            noload(Question.likes),
         ).where(Question.id == question_id)
     )
     question = result.scalar_one_or_none()
@@ -264,7 +265,8 @@ async def batch_delete_questions(ids: list[int], admin: AdminUser, db: DBSession
                 noload(Question.topic),
                 noload(Question.practice_records),
                 noload(Question.favorites),
-                noload(Question.wrong_questions)
+                noload(Question.wrong_questions),
+                noload(Question.likes),
             ).where(Question.id == question_id)
         )
         question = result.scalar_one_or_none()
@@ -437,11 +439,24 @@ async def get_users_count(admin: AdminUser, db: DBSession):
 
 
 @router.get("/stats/questions")
-async def get_questions_stats(admin: AdminUser, db: DBSession, topic_id: int | None = None):
+async def get_questions_stats(
+    admin: AdminUser,
+    db: DBSession,
+    topic_id: int | None = None,
+    difficulty_level: int | None = None,
+    source_year: int | None = None,
+    status: str | None = None,
+):
     """获取题目统计"""
     query = select(func.count(Question.id))
     if topic_id:
         query = query.where(Question.topic_id == topic_id)
+    if difficulty_level:
+        query = query.where(Question.difficulty_level == difficulty_level)
+    if source_year:
+        query = query.where(Question.source_year == source_year)
+    if status:
+        query = query.where(Question.status == status)
     result = await db.execute(query)
     return {"total": result.scalar()}
 
