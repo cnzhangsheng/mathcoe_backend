@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="袋鼠数学助理后端服务",
+    description="小学数学思维后端服务",
     lifespan=lifespan,
 )
 
@@ -160,7 +160,7 @@ async def render_content_page(slug: str, db: DBSession):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>{content.title} - 袋鼠数学助理</title>
+<title>{content.title} - 小学数学思维</title>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f8f8; color: #333; line-height: 1.8; }}
@@ -181,7 +181,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans
 <div class="meta">更新时间：{content.updated_at.strftime('%Y-%m-%d %H:%M')}</div>
 </div>
 <div class="content">{enhance_content_html(content.content)}</div>
-<div class="footer">由 袋鼠数学助理 提供</div>
+<div class="footer">由 小学数学思维 提供</div>
 </div>
 </body>
 </html>"""
