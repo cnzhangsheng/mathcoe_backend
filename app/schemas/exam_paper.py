@@ -33,7 +33,7 @@ class ExamPaperBase(BaseModel):
     total_questions: int = 10
     description: str | None = None
     paper_type: str = "daily"  # daily/mock/topic/past
-    status: str = "published"  # published/unpublished
+    status: str = "unpublished"  # published/unpublished
 
 
 class ExamPaperCreate(ExamPaperBase):

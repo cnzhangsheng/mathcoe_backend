@@ -21,7 +21,7 @@ class ExamPaper(BaseModel):
     file_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
     user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=None)
     generation_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
-    status: Mapped[str] = mapped_column(String(16), default="published", nullable=False)  # published/unpublished
+    status: Mapped[str] = mapped_column(String(16), default="unpublished", nullable=False)  # published/unpublished
 
     # Relationships
     questions = relationship("ExamPaperQuestion", back_populates="exam_paper", lazy="selectin", order_by="ExamPaperQuestion.sort")
