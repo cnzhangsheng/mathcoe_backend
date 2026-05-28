@@ -178,6 +178,7 @@ async def list_questions_admin(
     source_year: int | None = None,
     status: str | None = None,
     content: str | None = None,
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """获取题目列表"""
     query = select(Question).options(
@@ -196,7 +197,8 @@ async def list_questions_admin(
         query = query.where(Question.status == status)
     if content:
         query = query.where(Question.content["text"].as_string().like(f"%{content}%"))
-    query = query.order_by(Question.id.desc()).offset((page - 1) * size).limit(size)
+    order_by = Question.id.asc() if sort_order == "asc" else Question.id.desc()
+    query = query.order_by(order_by).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
