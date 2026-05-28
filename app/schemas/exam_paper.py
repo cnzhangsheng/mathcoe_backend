@@ -2,7 +2,7 @@
 ExamPaper schemas - 考卷相关数据结构
 """
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.question import BaseQuestionSchema
 
@@ -78,6 +78,7 @@ class DeletePaperResponse(BaseModel):
 
 
 class ExamPaperUpdate(BaseModel):
+    id: int | None = Field(default=None, ge=100000000000, le=999999999999, description="12位数字ID")
     title: str | None = None
     difficulty_level: int | None = None
     total_questions: int | None = None
