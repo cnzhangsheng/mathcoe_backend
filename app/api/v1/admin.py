@@ -489,7 +489,7 @@ async def list_exam_papers(
         query = query.where(ExamPaper.paper_type == paper_type)
     if title:
         query = query.where(ExamPaper.title.like(f"%{title}%"))
-    query = query.order_by(ExamPaper.created_at.desc()).offset((page - 1) * size).limit(size)
+    query = query.order_by(ExamPaper.id.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
