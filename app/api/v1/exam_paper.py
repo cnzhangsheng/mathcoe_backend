@@ -357,7 +357,7 @@ async def list_exam_papers(
     result = await db.execute(
         select(ExamPaper)
         .where(and_(*conditions))
-        .order_by(ExamPaper.created_at.desc())
+        .order_by(ExamPaper.id.desc())
         .offset(offset)
         .limit(page_size)
     )
@@ -714,7 +714,7 @@ async def get_my_papers(
     page_size: int = Query(default=20, ge=1, le=100),
 ):
     """获取用户生成的考卷列表"""
-    conditions = [ExamPaper.user_id == user["id"]]
+    conditions = [ExamPaper.user_id == user["id"], ExamPaper.status == "published"]
 
     count_result = await db.execute(
         select(func.count()).select_from(ExamPaper).where(and_(*conditions))
@@ -725,7 +725,7 @@ async def get_my_papers(
     result = await db.execute(
         select(ExamPaper)
         .where(and_(*conditions))
-        .order_by(ExamPaper.created_at.desc())
+        .order_by(ExamPaper.id.desc())
         .offset(offset)
         .limit(page_size)
     )
