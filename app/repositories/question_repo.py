@@ -18,7 +18,7 @@ class QuestionRepository(BaseRepository[Question]):
 
     async def get_by_topic(
         self, topic_id: int, limit: int = 20, level: int | None = None, sort_by: str = "default",
-        published_only: bool = True,
+        published_only: bool = True, offset: int = 0,
     ) -> list[Question]:
         """Get questions by topic ID, optionally filtered by level and sorted
 
@@ -65,30 +65,32 @@ class QuestionRepository(BaseRepository[Question]):
             query = query.outerjoin(wrong_subq, wrong_subq.c.question_id == Question.id)
             query = query.order_by(func.coalesce(wrong_subq.c.wrong_count, 0).desc())
 
-        result = await self.session.execute(query.limit(limit))
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def get_by_year(self, year: int, limit: int = 20, published_only: bool = True) -> list[Question]:
+    async def get_by_year(self, year: int, limit: int = 20, published_only: bool = True, offset: int = 0) -> list[Question]:
         """Get questions by source year"""
         query = select(Question).where(Question.source_year == year)
         if published_only:
             query = query.where(Question.status == "published")
-        result = await self.session.execute(query.limit(limit))
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def get_by_level(self, level: int, limit: int = 100, published_only: bool = True) -> list[Question]:
+    async def get_by_level(self, level: int, limit: int = 100, published_only: bool = True, offset: int = 0) -> list[Question]:
         """Get questions by difficulty level (1-6)"""
         query = select(Question).where(Question.difficulty_level == level)
         if published_only:
             query = query.where(Question.status == "published")
-        result = await self.session.execute(query.limit(limit))
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def get_all(self, limit: int = 100, offset: int = 0, published_only: bool = True, sort_by: str = "default") -> list[Question]:
-        """Get all questions with pagination, optionally filtered by published status"""
+    async def get_all(self, limit: int = 100, offset: int = 0, published_only: bool = True, sort_by: str = "default", level: int | None = None) -> list[Question]:
+        """Get all questions with pagination, optionally filtered by published status and level"""
         query = select(Question)
         if published_only:
             query = query.where(Question.status == "published")
+        if level is not None:
+            query = query.where(Question.difficulty_level == level)
 
         if sort_by == "favorites":
             favorite_subq = (

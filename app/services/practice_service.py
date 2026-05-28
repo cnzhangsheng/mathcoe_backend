@@ -49,18 +49,23 @@ class PracticeService:
         year: int | None = None,
         level: int | None = None,
         sort_by: str = "default",
+        page_size: int = 20,
     ) -> PracticeStartResponse:
         """Start a practice session"""
-        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}, level={level}, sort_by={sort_by}")
-        # 根据条件获取题目
+        logger.info(f"开始练习: user_id={user_id}, topic_id={topic_id}, mode={mode}, level={level}, sort_by={sort_by}, page_size={page_size}")
+        # 多取一条判断 has_more
         if topic_id:
-            questions = await self.question_repo.get_by_topic(topic_id, limit=10, level=level, sort_by=sort_by)
+            questions = await self.question_repo.get_by_topic(topic_id, limit=page_size + 1, level=level, sort_by=sort_by)
         elif year:
-            questions = await self.question_repo.get_by_year(year, limit=10)
+            questions = await self.question_repo.get_by_year(year, limit=page_size + 1)
         else:
-            questions = await self.question_repo.get_all(limit=10)
+            questions = await self.question_repo.get_all(limit=page_size + 1)
 
-        logger.info(f"获取题目完成: count={len(questions)}")
+        has_more = len(questions) > page_size
+        if has_more:
+            questions = questions[:page_size]
+
+        logger.info(f"获取题目完成: count={len(questions)}, has_more={has_more}")
 
         question_list = [
             {
@@ -83,8 +88,49 @@ class PracticeService:
             session_id=session_id,
             questions=question_list,
             total=len(question_list),
+            has_more=has_more,
             time_limit=time_limit,
         )
+
+    async def load_more(
+        self,
+        topic_id: int | None = None,
+        year: int | None = None,
+        level: int | None = None,
+        sort_by: str = "default",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> dict:
+        """Load more questions for an ongoing practice session"""
+        logger.info(f"加载更多题目: topic_id={topic_id}, offset={offset}, limit={limit}")
+        # 多取一条判断 has_more
+        if topic_id:
+            questions = await self.question_repo.get_by_topic(topic_id, limit=limit + 1, level=level, sort_by=sort_by, offset=offset)
+        elif year:
+            questions = await self.question_repo.get_by_year(year, limit=limit + 1, offset=offset)
+        else:
+            questions = await self.question_repo.get_all(limit=limit + 1, offset=offset)
+
+        has_more = len(questions) > limit
+        if has_more:
+            questions = questions[:limit]
+
+        question_list = [
+            {
+                "id": q.id,
+                "title": q.title,
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "explanation": q.explanation,
+                "difficulty_level": q.difficulty_level,
+                "question_type": q.question_type,
+            }
+            for q in questions
+        ]
+
+        logger.info(f"加载更多完成: count={len(question_list)}, has_more={has_more}")
+        return {"questions": question_list, "has_more": has_more, "next_offset": offset + len(question_list)}
 
     async def submit_answer(
         self,

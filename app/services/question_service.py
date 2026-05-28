@@ -1,20 +1,78 @@
 """
 Question service - question related business logic
 """
+import logging
 import random
+
+from sqlalchemy import select, func, cast, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.question import Question
+from app.models.practice_record import PracticeRecord
 from app.repositories.question_repo import QuestionRepository
 from app.repositories.topic_repo import TopicRepository
 from app.schemas.question import QuestionResponse, QuestionForPractice, QuestionForDiscover
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionService:
     """Question related business logic"""
 
     def __init__(self, session: AsyncSession):
+        self.session = session
         self.question_repo = QuestionRepository(session)
         self.topic_repo = TopicRepository(session)
+
+    async def get_recommended_questions(
+        self,
+        user_id: int,
+        level: int | None = None,
+        limit: int = 10,
+    ) -> list[QuestionForPractice]:
+        """Get recommended questions based on user's weakest topic and level"""
+        logger.info(f"开始推荐题目分析: user_id={user_id}, level={level}, limit={limit}")
+        # 1. 分析用户薄弱专题（正确率最低）
+        topic_stats = await self.session.execute(
+            select(
+                Question.topic_id,
+                func.count(PracticeRecord.id).label("total"),
+                func.sum(cast(PracticeRecord.is_correct, Integer)).label("correct"),
+            )
+            .select_from(PracticeRecord)
+            .join(Question, PracticeRecord.question_id == Question.id)
+            .where(PracticeRecord.user_id == user_id)
+            .group_by(Question.topic_id)
+            .order_by(func.sum(cast(PracticeRecord.is_correct, Integer)) / func.count(PracticeRecord.id))
+            .limit(1)
+        )
+        row = topic_stats.first()
+
+        if row and row.topic_id:
+            # 有练习记录 → 取最薄弱专题的题目，按用户等级过滤
+            accuracy = (row.correct / row.total * 100) if row.total > 0 else 0
+            logger.info(f"找到薄弱专题: topic_id={row.topic_id}, 正确率={accuracy:.1f}% ({row.correct}/{row.total})")
+            questions = await self.question_repo.get_by_topic(
+                row.topic_id, limit=limit, level=level, sort_by="default"
+            )
+        else:
+            # 无练习记录 → 按收藏数倒序推荐，按用户等级过滤
+            logger.info(f"用户无练习记录，按收藏数倒序推荐: user_id={user_id}, level={level}")
+            questions = await self.question_repo.get_all(limit=limit, sort_by="favorites", level=level)
+
+        logger.info(f"推荐题目查询完成: user_id={user_id}, 返回{len(questions)}道题目")
+
+        return [
+            QuestionForPractice(
+                id=q.id,
+                topic_id=q.topic_id,
+                title=q.title,
+                content=q.content,
+                options=q.content.get("options") if q.content else None,
+                difficulty_level=q.difficulty_level,
+            )
+            for q in questions
+        ]
 
     async def get_questions(
         self,
@@ -39,6 +97,7 @@ class QuestionService:
                 title=q.title,
                 content=q.content,
                 options=q.content.get("options") if q.content else None,
+                difficulty_level=q.difficulty_level,
             )
             for q in questions
         ]

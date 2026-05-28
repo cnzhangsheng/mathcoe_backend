@@ -12,12 +12,22 @@ class PracticeStartRequest(BaseModel):
     mode: str = "normal"  # normal / exam
     year: int | None = None  # 历年真题
     sort_by: str = "default"  # 题目排序: default / time / random / likes / favorites / wrong_count
+    page_size: int = 20  # 每页题目数量
+
+
+class PracticeMoreRequest(BaseModel):
+    topic_id: int | None = None
+    year: int | None = None
+    sort_by: str = "default"
+    offset: int  # 已加载的题目数
+    limit: int = 20  # 本次加载数量
 
 
 class PracticeStartResponse(BaseQuestionSchema):
     session_id: str  # 本次练习会话ID
     questions: list[dict]
     total: int
+    has_more: bool = False  # 是否还有更多题目
     time_limit: int | None = None  # 模考限时（秒）
 
 

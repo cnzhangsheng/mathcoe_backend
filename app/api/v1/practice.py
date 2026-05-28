@@ -16,6 +16,7 @@ from app.models.practice_record import PracticeRecord
 from app.schemas.practice import (
     PracticeStartRequest,
     PracticeStartResponse,
+    PracticeMoreRequest,
     PracticeSubmitRequest,
     PracticeSubmitResponse,
     PracticeRecordResponse,
@@ -43,6 +44,24 @@ async def start_practice(request: PracticeStartRequest, db: DBSession, current_u
         year=request.year,
         level=level,
         sort_by=request.sort_by,
+        page_size=request.page_size,
+    )
+
+
+@router.post("/more")
+async def load_more_practice(request: PracticeMoreRequest, db: DBSession, current_user: CurrentUser):
+    """加载更多练习题目"""
+    user_result = await db.execute(select(User).where(User.id == current_user["id"]))
+    user_info = user_result.scalar_one_or_none()
+    level = user_info.difficulty_level if user_info else None
+    service = PracticeService(db)
+    return await service.load_more(
+        topic_id=request.topic_id,
+        year=request.year,
+        level=level,
+        sort_by=request.sort_by,
+        offset=request.offset,
+        limit=request.limit,
     )
 
 
