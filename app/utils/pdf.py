@@ -119,10 +119,16 @@ def _img_url_to_data_uri(img_url: str) -> str:
     return data_uri
 
 
-_IMG_STYLE_STRIP_RE = re.compile(r'\b(width|height)\s*:\s*[^;]+;?\s*', re.IGNORECASE)
+# 只匹配百分比值（如 50%、100%）的 width/height，保留 px 像素值
+_IMG_STYLE_STRIP_RE = re.compile(r'\b(width|height)\s*:\s*[^;]*%[^;]*;?\s*', re.IGNORECASE)
 
 def _strip_img_style_width(html_text: str) -> str:
-    """Remove width & height from inline style on <img> tags to preserve natural size."""
+    """Remove percentage-based width & height from inline style on <img> tags.
+
+    Percentage values (e.g. width: 50%) are stripped because they depend on
+    container layout and produce wrong sizes in PDF. Pixel values (e.g.
+    width: 200px) are preserved so user-specified image dimensions take effect.
+    """
     _tag_re = re.compile(r'(<img\s[^>]*?style\s*=\s*")([^"]*)("[^>]*?>)', re.IGNORECASE)
     def _clean(m):
         return f'{m.group(1)}{_IMG_STYLE_STRIP_RE.sub("", m.group(2)).strip()}{m.group(3)}'
