@@ -176,7 +176,8 @@ async def list_questions_admin(
     topic_id: int | None = None,
     difficulty_level: int | None = None,
     source_year: int | None = None,
-    status: str | None = None
+    status: str | None = None,
+    content: str | None = None,
 ):
     """获取题目列表"""
     query = select(Question).options(
@@ -193,6 +194,8 @@ async def list_questions_admin(
         query = query.where(Question.source_year == source_year)
     if status:
         query = query.where(Question.status == status)
+    if content:
+        query = query.where(Question.content["text"].as_string().like(f"%{content}%"))
     query = query.order_by(Question.id.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -446,6 +449,7 @@ async def get_questions_stats(
     difficulty_level: int | None = None,
     source_year: int | None = None,
     status: str | None = None,
+    content: str | None = None,
 ):
     """获取题目统计"""
     query = select(func.count(Question.id))
@@ -457,6 +461,8 @@ async def get_questions_stats(
         query = query.where(Question.source_year == source_year)
     if status:
         query = query.where(Question.status == status)
+    if content:
+        query = query.where(Question.content["text"].as_string().like(f"%{content}%"))
     result = await db.execute(query)
     return {"total": result.scalar()}
 
