@@ -357,16 +357,12 @@ async def list_exam_papers(
     result = await db.execute(
         select(ExamPaper)
         .where(and_(*conditions))
-        .order_by(ExamPaper.id.desc())
+        .order_by(ExamPaper.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
     papers = list(result.scalars().all())
 
-    if not papers:
-        return ExamPaperListResponse(total=total, page=page, page_size=page_size, items=[])
-
-    # 查询用户对这些考卷的测试记录（仅登录用户）
     test_map: dict[int, tuple[int | None, str]] = {}
     if user:
         paper_ids = [p.id for p in papers]
@@ -725,13 +721,12 @@ async def get_my_papers(
     result = await db.execute(
         select(ExamPaper)
         .where(and_(*conditions))
-        .order_by(ExamPaper.id.desc())
+        .order_by(ExamPaper.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
     papers = list(result.scalars().all())
 
-    # 查询用户对这些考卷的测试记录
     paper_ids = [p.id for p in papers]
     test_map = {}
     if paper_ids:

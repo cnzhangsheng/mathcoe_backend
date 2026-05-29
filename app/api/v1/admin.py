@@ -489,7 +489,7 @@ async def list_exam_papers(
         query = query.where(ExamPaper.paper_type == paper_type)
     if title:
         query = query.where(ExamPaper.title.like(f"%{title}%"))
-    query = query.order_by(ExamPaper.id.desc()).offset((page - 1) * size).limit(size)
+    query = query.order_by(ExamPaper.created_at.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -497,7 +497,8 @@ async def list_exam_papers(
 @router.post("/exam-papers", response_model=ExamPaperResponse)
 async def create_exam_paper(data: ExamPaperCreate, admin: AdminUser, db: DBSession):
     """创建考卷"""
-    exam_paper = ExamPaper(**data.model_dump())
+    create_data = data.model_dump(exclude_none=True)
+    exam_paper = ExamPaper(**create_data)
     exam_paper.user_id = 100000000000
     db.add(exam_paper)
     await db.commit()

@@ -37,7 +37,7 @@ class ExamPaperBase(BaseModel):
 
 
 class ExamPaperCreate(ExamPaperBase):
-    pass
+    created_at: datetime | None = None
 
 
 class GeneratePaperRequest(BaseModel):
@@ -85,6 +85,7 @@ class ExamPaperUpdate(BaseModel):
     description: str | None = None
     paper_type: str | None = None
     status: str | None = None
+    created_at: datetime | None = None
 
 
 class ExamPaperResponse(BaseModel):
