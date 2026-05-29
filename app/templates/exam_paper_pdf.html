@@ -98,6 +98,20 @@
   }
 
   /* Image options — responsive grid */
+  .options-grid-1 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6pt;
+    list-style: none;
+    padding: 0;
+    margin: 8pt 0;
+  }
+  .options-grid-1 li {
+    padding: 6pt;
+    border: 1px solid #eee;
+    border-radius: 4pt;
+    break-inside: avoid;
+  }
   .options-grid-2 {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -114,6 +128,7 @@
     padding: 0;
     margin: 8pt 0;
   }
+  .options-grid-1 li,
   .options-grid-2 li,
   .options-grid-3 li {
     padding: 6pt;
@@ -121,6 +136,8 @@
     border-radius: 4pt;
     break-inside: avoid;
   }
+  .options-grid-1 li p,
+  .options-grid-1 li div,
   .options-grid-2 li p,
   .options-grid-2 li div,
   .options-grid-3 li p,
@@ -128,6 +145,7 @@
     display: inline;
     margin: 0;
   }
+  .options-grid-1 li img,
   .options-grid-2 li img,
   .options-grid-3 li img {
     max-width: 100%;

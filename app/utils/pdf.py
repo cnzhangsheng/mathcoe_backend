@@ -310,11 +310,22 @@ def render_exam_paper_pdf(
                 "image_data": img_data,  # only set for separate image field
             })
 
-        # Determine grid columns for image options — always 3 columns.
-        # A4 content ~539pt; 3-col cell ~174pt fits most option images.
+        # Determine grid columns for options layout
         if max_img_w == 0:
-            grid_cols = 0  # text-only → inline layout
+            # 纯文字选项：按总字数分档
+            total_chars = sum(
+                len(opt.get("label", opt.get("key", ""))) +
+                len(re.sub(r'<[^>]+>', '', str(opt.get("text", opt.get("value", "")) or "")))
+                for opt in options_raw
+            )
+            if total_chars > 60:
+                grid_cols = 1
+            elif total_chars > 30:
+                grid_cols = 3
+            else:
+                grid_cols = 0
         else:
+            # 含图片选项：固定 3 列
             grid_cols = 3
 
         logger.debug(f"PDF题目[{i}]: grid_cols={grid_cols}, max_img_w={max_img_w}")
