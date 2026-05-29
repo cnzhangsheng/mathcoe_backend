@@ -329,16 +329,17 @@ async def list_exam_papers(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     paper_type: str | None = Query(default=None),
+    difficulty_level: int | None = Query(default=None),
 ):
-    """获取考卷列表（分页，支持按类型筛选），附带用户作答状态"""
-    # 构建查询条件
+    """获取考卷列表（分页，支持按类型/难度筛选），附带用户作答状态"""
     conditions = [
         ExamPaper.status == "published",
         ExamPaper.user_id == 100000000000,
     ]
 
-    if user:
-        # 获取用户难度等级
+    if difficulty_level:
+        conditions.append(ExamPaper.difficulty_level == difficulty_level)
+    elif user:
         user_result = await db.execute(select(User).where(User.id == user["id"]))
         user_info = user_result.scalar_one_or_none()
         if user_info:
