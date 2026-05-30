@@ -268,3 +268,24 @@ class UserWrongQuestion(BaseQuestionSchema):
     wrong_count: int  # 答错次数
     last_wrong_at: datetime | None = None
     question: QuestionBasic | None = None
+
+
+# ============ UserDownloadRecord Schemas ============
+
+class UserDownloadRecordResponse(BaseModel):
+    """用户下载记录响应"""
+    id: int
+    user_id: int
+    exam_paper_id: int
+    exam_paper_title: str
+    downloaded_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserDownloadRecordListResponse(BaseModel):
+    """用户下载记录列表（分页）"""
+    total: int
+    items: list[UserDownloadRecordResponse]

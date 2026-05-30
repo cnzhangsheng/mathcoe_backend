@@ -15,6 +15,7 @@ from app.models.like import Like
 from app.models.content import Content
 from app.models.banner import Banner
 from app.models.feedback import Feedback
+from app.models.user_download import UserDownloadRecord
 
 __all__ = [
     "Base",
@@ -34,4 +35,5 @@ __all__ = [
     "Content",
     "Banner",
     "Feedback",
+    "UserDownloadRecord",
 ]

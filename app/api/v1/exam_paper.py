@@ -19,6 +19,7 @@ from app.models.question import Question
 from app.models.topic import Topic
 from app.models.favorite import WrongQuestion, Favorite
 from app.models.practice_record import PracticeRecord
+from app.models.user_download import UserDownloadRecord
 from app.models.user import User
 from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperWithQuestions, ExamPaperListResponse,
@@ -906,6 +907,13 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
 
     # file_path 存在且文件存在，直接返回
     if exam_paper.file_path and os.path.exists(exam_paper.file_path):
+        if user:
+            db.add(UserDownloadRecord(
+                user_id=user["id"],
+                exam_paper_id=exam_paper_id,
+                exam_paper_title=exam_paper.title,
+            ))
+            await db.commit()
         filename = quote(f"{exam_paper.title}.pdf")
         return StreamingResponse(
             open(exam_paper.file_path, "rb"),
@@ -957,6 +965,14 @@ async def download_exam_paper_pdf(exam_paper_id: int, db: DBSession, user: Curre
 
     exam_paper.file_path = file_path
     await db.commit()
+
+    if user:
+        db.add(UserDownloadRecord(
+            user_id=user["id"],
+            exam_paper_id=exam_paper_id,
+            exam_paper_title=exam_paper.title,
+        ))
+        await db.commit()
 
     filename = quote(f"{exam_paper.title}.pdf")
     return StreamingResponse(

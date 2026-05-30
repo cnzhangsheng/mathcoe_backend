@@ -26,13 +26,15 @@ from app.models.topic import Topic
 from app.models.question import Question
 from app.models.exam_paper import ExamPaper, ExamPaperQuestion
 from app.models.practice_record import PracticeRecord
+from app.models.user_download import UserDownloadRecord
 from app.schemas.user import UserResponse, UserTierUpdate
 from app.schemas.topic import TopicResponse, TopicCreate, TopicUpdate
 from app.schemas.question import QuestionResponse, QuestionCreate, QuestionUpdate, BatchImportResponse
 from app.services.question_batch_import import batch_import
 from app.schemas.exam_paper import (
     ExamPaperResponse, ExamPaperCreate, ExamPaperUpdate, ExamPaperWithQuestions,
-    ExamPaperQuestionCreate, ExamPaperQuestionUpdate, ExamPaperQuestionResponse
+    ExamPaperQuestionCreate, ExamPaperQuestionUpdate, ExamPaperQuestionResponse,
+    UserDownloadRecordResponse, UserDownloadRecordListResponse,
 )
 from app.utils.pdf import render_exam_paper_pdf_stream
 
@@ -74,7 +76,7 @@ async def list_users(
         query = query.where(User.daily_goal == daily_goal)
     if user_tier:
         query = query.where(User.user_tier == user_tier)
-    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(User.created_at.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -106,6 +108,38 @@ async def update_user_tier(user_id: int, data: UserTierUpdate, admin: AdminUser,
     await db.commit()
     await db.refresh(user)
     return user
+
+
+# ============ 用户下载记录 ============
+
+@router.get("/pdf-downloads", response_model=UserDownloadRecordListResponse)
+async def list_user_downloads(
+    admin: AdminUser,
+    db: DBSession,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    user_id: int | None = None,
+    exam_paper_id: int | None = None,
+    keyword: str | None = None,
+):
+    """获取PDF下载记录列表"""
+    query = select(UserDownloadRecord)
+
+    if user_id:
+        query = query.where(UserDownloadRecord.user_id == user_id)
+    if exam_paper_id:
+        query = query.where(UserDownloadRecord.exam_paper_id == exam_paper_id)
+    if keyword:
+        query = query.where(UserDownloadRecord.exam_paper_title.ilike(f"%{keyword}%"))
+
+    total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = total_result.scalar() or 0
+
+    query = query.order_by(UserDownloadRecord.downloaded_at.desc()).offset((page - 1) * size).limit(size)
+    result = await db.execute(query)
+    items = list(result.scalars().all())
+
+    return UserDownloadRecordListResponse(total=total, items=items)
 
 
 # ============ 专题管理 ============
