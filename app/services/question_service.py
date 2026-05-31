@@ -109,14 +109,33 @@ class QuestionService:
             return None
         return QuestionResponse.model_validate(question)
 
-    async def get_random_question(self, level: int | None = None) -> QuestionForDiscover | None:
-        """Get a random question for discover page, optionally filtered by level"""
+    async def get_random_question(self, level: int | None = None, user_id: int | None = None) -> QuestionForDiscover | None:
+        """Get a random question for discover page, optionally filtered by level.
+        If user_id is provided, filters out questions the user has already answered correctly.
+        """
         if level:
             questions = await self.question_repo.get_by_level(level, limit=100)
         else:
             questions = await self.question_repo.get_all(limit=100)
         if not questions:
             return None
+
+        # 过滤掉用户已答对的题目
+        if user_id:
+            correct_ids_result = await self.session.execute(
+                select(PracticeRecord.question_id)
+                .where(
+                    PracticeRecord.user_id == user_id,
+                    PracticeRecord.is_correct == True,
+                )
+                .distinct()
+            )
+            correct_ids = {row[0] for row in correct_ids_result.all()}
+            if correct_ids:
+                questions = [q for q in questions if q.id not in correct_ids]
+                if not questions:
+                    logger.info(f"用户 {user_id} 所有题目均已答对，无新题可选")
+                    return None
 
         question = random.choice(questions)
 

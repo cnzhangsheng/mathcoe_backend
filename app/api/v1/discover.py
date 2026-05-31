@@ -20,17 +20,19 @@ async def get_random_question(db: DBSession, user: UserOrNone = None):
     Unauthenticated users get a random question without level filtering.
     """
     difficulty_level = None
+    user_id = None
     if user:
         logger.info(f"获取随机题目: user_id={user['id']}")
         user_repo = UserRepository(db)
         db_user = await user_repo.get_by_id(user['id'])
         difficulty_level = db_user.difficulty_level if db_user else None
+        user_id = user['id']
         logger.info(f"用户难度等级: {difficulty_level}")
     else:
         logger.info("获取随机题目: 未登录用户")
 
     service = QuestionService(db)
-    question = await service.get_random_question(level=difficulty_level)
+    question = await service.get_random_question(level=difficulty_level, user_id=user_id)
     if question is None:
         logger.warning(f"没有可用的题目")
         from fastapi import HTTPException

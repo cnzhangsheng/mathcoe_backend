@@ -57,7 +57,7 @@ class UserService:
         return UserResponse.model_validate(user)
 
     async def get_user_insight(self, user_id: int) -> UserInsightResponse:
-        """Get AI learning insight for user"""
+        """Get user learning insight (weakest topic analysis)"""
         # 按专题统计答题正确率，找出最薄弱专题
         topic_stats = await self.session.execute(
             select(

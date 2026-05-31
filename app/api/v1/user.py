@@ -29,7 +29,7 @@ async def get_ability_radar(db: DBSession, current_user: CurrentUser):
 
 @router.get("/insight", response_model=UserInsightResponse)
 async def get_user_insight(db: DBSession, current_user: CurrentUser):
-    """Get AI learning insight"""
+    """Get user learning insight"""
     service = UserService(db)
     return await service.get_user_insight(current_user["id"])
 
