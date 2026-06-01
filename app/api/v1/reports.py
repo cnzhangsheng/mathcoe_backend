@@ -193,3 +193,92 @@ async def get_exam_paper_stats_report(admin: AdminUser, db: DBSession):
         "top_papers": top_papers,
         "score_distribution": score_dist,
     }
+
+
+@router.get("/reports/question-ranking")
+async def get_question_ranking_report(admin: AdminUser, db: DBSession):
+    """题目排行：按难度级别统计热门 TOP20、收藏 TOP20"""
+    levels = [1, 2, 3]
+    result = {}
+
+    for level in levels:
+        # 热门题目 TOP20（按做题次数）
+        hot_result = await db.execute(
+            select(
+                Question.id,
+                Question.title,
+                Question.difficulty_level,
+                Question.status,
+                Question.content,
+                Topic.id.label("topic_id"),
+                Topic.title.label("topic_title"),
+                func.count(PracticeRecord.id).label("practice_count"),
+                func.count(func.distinct(PracticeRecord.user_id)).label("user_count"),
+            )
+            .join(Question, PracticeRecord.question_id == Question.id)
+            .join(Topic, Topic.id == Question.topic_id, isouter=True)
+            .where(Question.difficulty_level == level)
+            .group_by(Question.id, Question.title, Question.difficulty_level, Question.status, Question.content, Topic.id, Topic.title)
+            .order_by(desc("practice_count"))
+            .limit(20)
+        )
+        hot_rows = hot_result.all()
+
+        hot_questions = []
+        for r in hot_rows:
+            content_text = ""
+            if r.content and isinstance(r.content, dict):
+                content_text = r.content.get("text", "")
+            hot_questions.append({
+                "id": r.id,
+                "title": r.title,
+                "content": content_text or r.title,
+                "difficulty_level": r.difficulty_level,
+                "topic_title": r.topic_title or "未分类",
+                "practice_count": r.practice_count,
+                "user_count": r.user_count,
+            })
+
+        # 收藏题目 TOP20（按收藏次数）
+        fav_result = await db.execute(
+            select(
+                Question.id,
+                Question.title,
+                Question.difficulty_level,
+                Question.status,
+                Question.content,
+                Topic.id.label("topic_id"),
+                Topic.title.label("topic_title"),
+                func.count(Favorite.id).label("favorite_count"),
+                func.count(func.distinct(Favorite.user_id)).label("fav_user_count"),
+            )
+            .join(Question, Favorite.question_id == Question.id)
+            .join(Topic, Topic.id == Question.topic_id, isouter=True)
+            .where(Question.difficulty_level == level)
+            .group_by(Question.id, Question.title, Question.difficulty_level, Question.status, Question.content, Topic.id, Topic.title)
+            .order_by(desc("favorite_count"))
+            .limit(20)
+        )
+        fav_rows = fav_result.all()
+
+        favorite_questions = []
+        for r in fav_rows:
+            content_text = ""
+            if r.content and isinstance(r.content, dict):
+                content_text = r.content.get("text", "")
+            favorite_questions.append({
+                "id": r.id,
+                "title": r.title,
+                "content": content_text or r.title,
+                "difficulty_level": r.difficulty_level,
+                "topic_title": r.topic_title or "未分类",
+                "favorite_count": r.favorite_count,
+                "fav_user_count": r.fav_user_count,
+            })
+
+        result[str(level)] = {
+            "hot_questions": hot_questions,
+            "favorite_questions": favorite_questions,
+        }
+
+    return result
