@@ -212,7 +212,7 @@ async def get_question_ranking_report(admin: AdminUser, db: DBSession):
                 Question.content,
                 Topic.id.label("topic_id"),
                 Topic.title.label("topic_title"),
-                func.count(PracticeRecord.id).label("practice_count"),
+                func.count(func.distinct(PracticeRecord.user_id)).label("practice_count"),
                 func.count(func.distinct(PracticeRecord.user_id)).label("user_count"),
             )
             .join(Question, PracticeRecord.question_id == Question.id)
