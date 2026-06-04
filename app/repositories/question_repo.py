@@ -1,8 +1,9 @@
 """
 Question repository - data access for Question model
 """
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, Integer, Float, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.question import Question
 from app.models.like import Like
@@ -104,3 +105,86 @@ class QuestionRepository(BaseRepository[Question]):
         query = query.limit(limit).offset(offset)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def search_by_content(self, keyword: str, level: int | None = None, topic_id: int | None = None, page: int = 1, size: int = 20) -> tuple[list[Question], int]:
+        """按题目内容模糊搜索，支持按难度和专题过滤"""
+        query = (
+            select(Question)
+            .options(selectinload(Question.topic))
+            .where(
+                Question.content["text"].as_string().ilike(f"%{keyword}%"),
+                Question.status == "published",
+            )
+        )
+        if level is not None:
+            query = query.where(Question.difficulty_level == level)
+        if topic_id is not None:
+            query = query.where(Question.topic_id == topic_id)
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await self.session.execute(count_query)
+        total = total_result.scalar() or 0
+
+        offset = (page - 1) * size
+        query = query.order_by(Question.id.desc()).offset(offset).limit(size)
+        result = await self.session.execute(query)
+        items = list(result.scalars().all())
+        return items, total
+
+    async def get_rankings(self, level: int) -> dict:
+        """获取指定Level的收藏TOP20和易错TOP20"""
+        from app.models.practice_record import PracticeRecord
+
+        # 收藏TOP20：按收藏的不同用户数降序
+        fav_subquery = (
+            select(
+                Favorite.question_id,
+                func.count(func.distinct(Favorite.user_id)).label("fav_count"),
+            )
+            .group_by(Favorite.question_id)
+            .subquery()
+        )
+
+        hot_query = (
+            select(Question, fav_subquery.c.fav_count)
+            .options(selectinload(Question.topic))
+            .join(fav_subquery, Question.id == fav_subquery.c.question_id)
+            .where(Question.difficulty_level == level, Question.status == "published")
+            .order_by(fav_subquery.c.fav_count.desc())
+            .limit(20)
+        )
+        hot_result = await self.session.execute(hot_query)
+        hot_rows = hot_result.all()
+
+        # 易错TOP20：按错误率降序（答错用户数/答题用户数，要求答题人数≥5）
+        wrong_subquery = (
+            select(
+                PracticeRecord.question_id,
+                func.count(func.distinct(PracticeRecord.user_id)).label("total_users"),
+                func.sum(case((PracticeRecord.is_correct == False, 1), else_=0)).label("wrong_users"),
+            )
+            .group_by(PracticeRecord.question_id)
+            .having(func.count(func.distinct(PracticeRecord.user_id)) >= 5)
+            .subquery()
+        )
+
+        wrong_query = (
+            select(Question, wrong_subquery.c.total_users, wrong_subquery.c.wrong_users)
+            .options(selectinload(Question.topic))
+            .join(wrong_subquery, Question.id == wrong_subquery.c.question_id)
+            .where(Question.difficulty_level == level, Question.status == "published")
+            .order_by(
+                (
+                    wrong_subquery.c.wrong_users.cast(Float)
+                    / wrong_subquery.c.total_users.cast(Float)
+                ).desc()
+            )
+            .limit(20)
+        )
+        wrong_result = await self.session.execute(wrong_query)
+        wrong_rows = wrong_result.all()
+
+        return {
+            "hot_rows": hot_rows,
+            "wrong_rows": wrong_rows,
+        }
