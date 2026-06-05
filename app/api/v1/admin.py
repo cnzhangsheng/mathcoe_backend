@@ -206,7 +206,7 @@ async def list_questions_admin(
     admin: AdminUser,
     db: DBSession,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=1000),
     topic_id: int | None = None,
     difficulty_level: int | None = None,
     source_year: int | None = None,
