@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret_key: str = "change-this-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 1440  # 24 hours
+    jwt_expire_minutes: int = 52560000  # 100 years, effectively permanent
 
     # App
     app_name: str = "Kangaroo Math Brain"
