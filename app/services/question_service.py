@@ -109,35 +109,70 @@ class QuestionService:
             return None
         return QuestionResponse.model_validate(question)
 
-    async def get_random_question(self, level: int | None = None, user_id: int | None = None) -> QuestionForDiscover | None:
-        """Get a random question for discover page, optionally filtered by level.
-        If user_id is provided, filters out questions the user has already answered correctly.
+    async def get_random_question(
+        self, level: int | None = None, user_id: int | None = None,
+        exclude_ids: set[int] | None = None,
+    ) -> QuestionForDiscover | None:
+        """Get a random question for discover page, with weighted selection.
+
+        Weighting: questions with higher ID (newer) have higher probability.
+        Filters:
+          - exclude_ids: already shown in current session
+          - practice_records: questions the user has already done (correct or wrong)
+        Falls back to unfiltered pool when all questions have been seen.
         """
+        # 1. 拉取大池子（最多 2000 条）
         if level:
-            questions = await self.question_repo.get_by_level(level, limit=100)
+            questions = await self.question_repo.get_by_level(level, limit=2000)
         else:
-            questions = await self.question_repo.get_all(limit=100)
+            questions = await self.question_repo.get_all(limit=2000)
         if not questions:
             return None
 
-        # 过滤掉用户已答对的题目
+        # 2. 过滤掉本次会话已看过的
+        if exclude_ids:
+            questions = [q for q in questions if q.id not in exclude_ids]
+
+        # 3. 过滤掉用户做过的所有题（含正确和错误）
         if user_id:
-            correct_ids_result = await self.session.execute(
+            done_ids_result = await self.session.execute(
                 select(PracticeRecord.question_id)
-                .where(
-                    PracticeRecord.user_id == user_id,
-                    PracticeRecord.is_correct == True,
-                )
+                .where(PracticeRecord.user_id == user_id)
                 .distinct()
             )
-            correct_ids = {row[0] for row in correct_ids_result.all()}
-            if correct_ids:
-                questions = [q for q in questions if q.id not in correct_ids]
-                if not questions:
-                    logger.info(f"用户 {user_id} 所有题目均已答对，无新题可选")
-                    return None
+            done_ids = {row[0] for row in done_ids_result.all()}
+            if done_ids:
+                questions = [q for q in questions if q.id not in done_ids]
 
-        question = random.choice(questions)
+        # 4. 如果过滤完空了，降级：只排除 session 已看过，不排除做过的
+        if not questions and exclude_ids:
+            logger.info("当前池子已无全新题，降级为仅排除已看过的")
+            if level:
+                questions = await self.question_repo.get_by_level(level, limit=2000)
+            else:
+                questions = await self.question_repo.get_all(limit=2000)
+            if exclude_ids:
+                questions = [q for q in questions if q.id not in exclude_ids]
+
+        # 5. 如果还是空（极端情况所有题都看过了），去掉所有排除条件
+        if not questions:
+            logger.info("所有题目均已被看过，从头开始循环")
+            if level:
+                questions = await self.question_repo.get_by_level(level, limit=2000)
+            else:
+                questions = await self.question_repo.get_all(limit=2000)
+            if not questions:
+                return None
+
+        # 6. 按 ID 加权随机（ID 越大 = 越新 = 权重越高）
+        min_id = min(q.id for q in questions)
+        weights = [q.id - min_id + 1 for q in questions]
+        question = random.choices(questions, weights=weights, k=1)[0]
+
+        logger.info(
+            f"加权随机选题: user_id={user_id}, level={level}, "
+            f"pool={len(questions)}, chosen_id={question.id}"
+        )
 
         return QuestionForDiscover(
             id=question.id,
