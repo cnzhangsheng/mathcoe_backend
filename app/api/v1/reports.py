@@ -2,8 +2,10 @@
 Reports API - 运营报表
 """
 import logging
-from fastapi import APIRouter
-from sqlalchemy import select, func, desc, Integer
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Query
+from sqlalchemy import select, func, cast, Date
 from sqlalchemy.sql import and_
 
 from app.api.deps import DBSession, AdminUser
@@ -282,3 +284,54 @@ async def get_question_ranking_report(admin: AdminUser, db: DBSession):
         }
 
     return result
+
+
+@router.get("/reports/practice-trend")
+async def get_practice_trend_report(
+    admin: AdminUser,
+    db: DBSession,
+    days: int = Query(30, ge=1, le=365, description="统计天数"),
+):
+    """答题记录趋势报表：按日统计答题总量和参与用户数"""
+    now = datetime.now()
+    start_date = now - timedelta(days=days - 1)
+    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 按日期分组统计
+    result = await db.execute(
+        select(
+            cast(PracticeRecord.created_at, Date).label("date"),
+            func.count(PracticeRecord.id).label("practice_count"),
+            func.count(func.distinct(PracticeRecord.user_id)).label("user_count"),
+        )
+        .where(PracticeRecord.created_at >= start_date)
+        .group_by(cast(PracticeRecord.created_at, Date))
+        .order_by(cast(PracticeRecord.created_at, Date))
+    )
+    rows = result.all()
+
+    # 将查询结果转为字典，便于补零
+    date_map: dict[str, dict] = {}
+    for r in rows:
+        date_str = str(r.date)
+        date_map[date_str] = {
+            "date": date_str,
+            "practice_count": r.practice_count,
+            "user_count": r.user_count,
+        }
+
+    # 补全无数据的日期
+    items: list[dict] = []
+    for i in range(days):
+        current_date = start_date + timedelta(days=i)
+        date_str = current_date.strftime("%Y-%m-%d")
+        if date_str in date_map:
+            items.append(date_map[date_str])
+        else:
+            items.append({
+                "date": date_str,
+                "practice_count": 0,
+                "user_count": 0,
+            })
+
+    return {"items": items}
