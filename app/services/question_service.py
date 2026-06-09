@@ -24,6 +24,33 @@ class QuestionService:
         self.question_repo = QuestionRepository(session)
         self.topic_repo = TopicRepository(session)
 
+    async def search_questions(
+        self,
+        keyword: str,
+        level: int | None = None,
+        topic_id: int | None = None,
+        page: int = 1,
+        size: int = 20,
+        tag: str | None = None,
+    ) -> tuple[list[dict], int]:
+        """按内容搜索已发布的题目"""
+        questions, total = await self.question_repo.search_by_content(
+            keyword, level, topic_id, page, size, tag
+        )
+        items = []
+        for q in questions:
+            content_text = ""
+            if q.content and isinstance(q.content, dict):
+                content_text = q.content.get("text", "")
+            items.append({
+                "id": q.id,
+                "content": content_text,
+                "difficulty_level": q.difficulty_level,
+                "topic_title": q.topic.title if q.topic else "未分类",
+                "question_type": q.question_type,
+            })
+        return items, total
+
     async def get_recommended_questions(
         self,
         user_id: int,
