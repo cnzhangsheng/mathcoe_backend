@@ -112,7 +112,10 @@ class QuestionRepository(BaseRepository[Question]):
             select(Question)
             .options(selectinload(Question.topic))
             .where(
-                Question.content["text"].as_string().ilike(f"%{keyword}%"),
+                or_(
+                    Question.content["text"].as_string().ilike(f"%{keyword}%"),
+                    Question.tags.as_string().ilike(f"%{keyword}%"),
+                ),
                 Question.status == "published",
             )
         )
