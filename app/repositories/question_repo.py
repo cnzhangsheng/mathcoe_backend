@@ -1,7 +1,7 @@
 """
 Question repository - data access for Question model
 """
-from sqlalchemy import select, func, or_, Integer, Float, case
+from sqlalchemy import select, func, or_, cast, Integer, Float, case, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -114,7 +114,7 @@ class QuestionRepository(BaseRepository[Question]):
             .where(
                 or_(
                     Question.content["text"].as_string().ilike(f"%{keyword}%"),
-                    Question.tags.as_string().ilike(f"%{keyword}%"),
+                    cast(Question.tags, String).ilike(f"%{keyword}%"),
                 ),
                 Question.status == "published",
             )
