@@ -63,7 +63,6 @@ async def search_questions(
     keyword: str = Query(""),
     level: int | None = Query(None),
     topic_id: int | None = Query(None),
-    tag: str | None = Query(None),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=50),
     db: DBSession = None,
@@ -73,8 +72,21 @@ async def search_questions(
     if not keyword.strip():
         return {"items": [], "total": 0, "page": page, "size": size}
 
-    service = QuestionService(db)
-    items, total = await service.search_questions(keyword.strip(), level, topic_id, page, size, tag)
+    repo = QuestionRepository(db)
+    questions, total = await repo.search_by_content(keyword.strip(), level, topic_id, page, size)
+
+    items = []
+    for q in questions:
+        content_text = ""
+        if q.content and isinstance(q.content, dict):
+            content_text = q.content.get("text", "")
+        items.append({
+            "id": q.id,
+            "content": content_text,
+            "difficulty_level": q.difficulty_level,
+            "topic_title": q.topic.title if q.topic else "未分类",
+            "question_type": q.question_type,
+        })
 
     return {"items": items, "total": total, "page": page, "size": size}
 

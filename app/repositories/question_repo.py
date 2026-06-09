@@ -106,19 +106,15 @@ class QuestionRepository(BaseRepository[Question]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def search_by_content(self, keyword: str, level: int | None = None, topic_id: int | None = None, page: int = 1, size: int = 20, tag: str | None = None) -> tuple[list[Question], int]:
-        """按题目内容模糊搜索，支持按难度、专题和标签过滤"""
-        conditions = [
-            Question.content["text"].as_string().ilike(f"%{keyword}%"),
-            Question.status == "published",
-        ]
-        if tag:
-            conditions.append(Question.tags.as_string().ilike(f"%{tag}%"))
-
+    async def search_by_content(self, keyword: str, level: int | None = None, topic_id: int | None = None, page: int = 1, size: int = 20) -> tuple[list[Question], int]:
+        """按题目内容模糊搜索，支持按难度和专题过滤"""
         query = (
             select(Question)
             .options(selectinload(Question.topic))
-            .where(*conditions)
+            .where(
+                Question.content["text"].as_string().ilike(f"%{keyword}%"),
+                Question.status == "published",
+            )
         )
         if level is not None:
             query = query.where(Question.difficulty_level == level)
